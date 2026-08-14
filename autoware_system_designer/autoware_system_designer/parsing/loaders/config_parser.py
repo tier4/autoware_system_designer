@@ -30,7 +30,7 @@ from ..config import (
     SystemConfig,
 )
 from ..domain import ParameterFileDefinition, ParameterValueDefinition, PortDefinition
-from .data_validator import ValidatorFactory, entity_name_decode
+from .config_validator import ValidatorFactory, entity_name_decode
 from .yaml_parser import yaml_parser
 
 logger = logging.getLogger(__name__)

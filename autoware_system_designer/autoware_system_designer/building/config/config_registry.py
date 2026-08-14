@@ -35,8 +35,8 @@ from ...parsing.config import (
     ParameterSetConfig,
     SystemConfig,
 )
-from ...parsing.loaders.data_parser import ConfigParser
-from ...parsing.loaders.data_validator import entity_name_decode
+from ...parsing.loaders.config_parser import ConfigParser
+from ...parsing.loaders.config_validator import entity_name_decode
 from ...utils.format_version import check_format_version
 from ...utils.path_utils import canonical_path
 from ..resolution.variant_resolver import (

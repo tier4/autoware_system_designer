@@ -14,8 +14,8 @@
 
 """Loaders module - YAML parsing and data validation."""
 
-from .data_parser import ConfigParser
-from .data_validator import (
+from .config_parser import ConfigParser
+from .config_validator import (
     BaseValidator,
     ModuleValidator,
     NodeValidator,

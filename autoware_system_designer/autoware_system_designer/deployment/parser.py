@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from ..exceptions import ValidationError
 from ..exporting.json_io import extract_system_structure_data, load_system_structure
 from ..parsing.config import SystemConfig
-from ..parsing.loaders.data_validator import entity_name_decode
+from ..parsing.loaders.config_validator import entity_name_decode
 from ..parsing.loaders.yaml_parser import yaml_parser
 from ..utils.path_utils import canonical_path
 
