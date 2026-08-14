@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: Tracker.node
+
+description: Dummy multi-object tracker that fuses detected objects from multiple detectors into tracked objects.
 
 package:
   name: autoware_perception_dummy_nodes

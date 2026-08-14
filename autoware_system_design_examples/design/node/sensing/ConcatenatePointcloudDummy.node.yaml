@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: ConcatenatePointcloudDummy.node
+
+description: Dummy preprocessing node that concatenates up to eight LiDAR point clouds into a single output cloud.
 
 package:
   name: autoware_pointcloud_preprocessor

@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: PerceptionA.module
+
+description: Perception pipeline variant A - two detector modules and a CenterPoint detector feeding a tracker and predictor to produce predicted objects.
 
 instances:
   - name: detector_a1

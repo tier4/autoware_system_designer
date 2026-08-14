@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.1
+autoware_system_design_format: 0.4.0
 
 name: TypeAlpha.system
+
+description: System configuration for Type Alpha, demo configuration.
 
 variables:
   - name: vehicle_id

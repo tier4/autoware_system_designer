@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: CameraDummyDriver.node
+
+description: Dummy camera driver that periodically publishes raw image, compressed image and camera info.
 
 package:
   name: autoware_system_dummy_modules

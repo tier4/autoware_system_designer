@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: RadarDummyDriver.node
+
+description: Dummy radar driver that periodically publishes detected and tracked objects.
 
 package:
   name: autoware_system_dummy_modules

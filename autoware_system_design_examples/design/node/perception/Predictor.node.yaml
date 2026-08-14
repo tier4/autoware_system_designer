@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: Predictor.node
+
+description: Dummy predictor that produces predicted objects from tracked objects and the lanelet map.
 
 package:
   name: autoware_perception_dummy_nodes

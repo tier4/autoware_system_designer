@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: DetectedObjectMergerDummy6.node
+
+description: Dummy node that merges detected objects from up to six input sources into a single output.
 
 package:
   name: autoware_system_dummy_modules

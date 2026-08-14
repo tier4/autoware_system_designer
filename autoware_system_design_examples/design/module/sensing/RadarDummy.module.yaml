@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: RadarDummy.module
+
+description: Radar sensing module - six radar driver instances feeding detected- and tracked-object mergers, exposing the merged objects as the module outputs.
 
 instances:
   - name: radar_front_center
