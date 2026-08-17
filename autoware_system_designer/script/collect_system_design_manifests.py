@@ -26,7 +26,7 @@ def find_packages(root_dir):
         if "package.xml" in filenames:
             name = get_package_name(dirpath)
             if name:
-                packages[os.path.abspath(dirpath)] = name
+                packages[os.path.realpath(dirpath)] = name
             # Optimization: don't traverse inside packages unless they are metapackages?
             # ROS 2 packages usually don't nest.
             # But let's be safe and traverse.
@@ -35,8 +35,8 @@ def find_packages(root_dir):
 
 def parse_design_file(filepath):
     try:
-        with open(filepath, "r") as f:
-            content = yaml.safe_load(f)
+        with open(filepath, "r") as file:
+            content = yaml.safe_load(file)
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
         raise ValueError(f"Failed to parse YAML file: {filepath}") from exc
     except OSError as exc:
@@ -61,6 +61,23 @@ def infer_type(filename):
 
 def is_target_design_file(filename):
     return infer_type(filename) != "unknown"
+
+
+def to_manifest_path(path, anchor):
+    """Manifest entry for a path: anchor-relative when inside the anchor, absolute otherwise.
+
+    Inverse of autoware_system_designer.utils.path_utils.resolve_manifest_path; kept local so
+    the collector runs stdlib-only at install time.
+    """
+    if not anchor:
+        return path
+    try:
+        rel = os.path.relpath(path, anchor)
+    except ValueError:
+        return path
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return path
+    return rel
 
 
 def find_source_root(start_path):
@@ -115,7 +132,17 @@ def main():
             "'source' uses workspace source package directories (CI/no-build mode)."
         ),
     )
+    parser.add_argument(
+        "--anchor",
+        default=None,
+        help=(
+            "Base directory that manifest paths are written relative to, recorded as "
+            "'workspace_root' in _package_map.yaml. Absolute paths are written when omitted."
+        ),
+    )
     args = parser.parse_args()
+
+    anchor = os.path.realpath(args.anchor) if args.anchor else None
 
     # Find workspace root
     workspace_root = find_source_root(args.start_path)
@@ -150,23 +177,23 @@ def main():
 
     yaml_parse_errors = []
 
-    for yf in yaml_files:
-        yf_abs = os.path.abspath(yf)
+    for yaml_file in yaml_files:
+        yaml_file_abs = os.path.realpath(yaml_file)
 
-        if not is_target_design_file(os.path.basename(yf_abs)):
+        if not is_target_design_file(os.path.basename(yaml_file_abs)):
             continue
 
         # Check content first (it's a hard requirement)
         try:
-            content = parse_design_file(yf_abs)
+            content = parse_design_file(yaml_file_abs)
         except ValueError:
-            yaml_parse_errors.append(yf_abs)
+            yaml_parse_errors.append(yaml_file_abs)
             continue
         if not content:
             continue
 
         # Find which package it belongs to
-        parent = os.path.dirname(yf_abs)
+        parent = os.path.dirname(yaml_file_abs)
         found_pkg = None
 
         # Traverse up
@@ -191,7 +218,7 @@ def main():
 
         if target_pkg not in pkg_files:
             pkg_files[target_pkg] = []
-        pkg_files[target_pkg].append(yf_abs)
+        pkg_files[target_pkg].append(yaml_file_abs)
 
     if yaml_parse_errors:
         unique_files = sorted(set(yaml_parse_errors))
@@ -208,18 +235,21 @@ def main():
     package_map = {}
     for pkg_src_path, pkg_name in pkg_paths.items():
         if is_source_mode:
-            p = pkg_src_path
+            pkg_path = pkg_src_path
         elif is_isolated:
             # isolated: install_base/pkg_name/share/pkg_name
-            p = os.path.join(install_base, pkg_name, "share", pkg_name)
+            pkg_path = os.path.join(install_base, pkg_name, "share", pkg_name)
         else:
             # merged: install_prefix/share/pkg_name
-            p = os.path.join(args.install_prefix, "share", pkg_name)
-        package_map[pkg_name] = p
+            pkg_path = os.path.join(args.install_prefix, "share", pkg_name)
+        package_map[pkg_name] = to_manifest_path(pkg_path, anchor)
 
     package_map_path = os.path.join(output_dir, "_package_map.yaml")
-    with open(package_map_path, "w") as f:
-        yaml.dump({"package_map": package_map}, f)
+    package_map_data = {"package_map": package_map}
+    if anchor:
+        package_map_data["workspace_root"] = anchor
+    with open(package_map_path, "w") as manifest_file:
+        yaml.dump(package_map_data, manifest_file)
         print(f"Generated {package_map_path} with {len(package_map)} packages")
 
     # 2. Generate individual manifests for packages with design files
@@ -234,14 +264,14 @@ def main():
 
         data = {"package_name": pkg, "deploy_config_files": []}
 
-        for f in files:
-            t = infer_type(os.path.basename(f))
-            if t == "unknown":
+        for design_file in files:
+            design_type = infer_type(os.path.basename(design_file))
+            if design_type == "unknown":
                 continue
-            data["deploy_config_files"].append({"path": f, "type": t})
+            data["deploy_config_files"].append({"path": to_manifest_path(design_file, anchor), "type": design_type})
 
-        with open(manifest_path, "w") as f:
-            yaml.dump(data, f)
+        with open(manifest_path, "w") as manifest_file:
+            yaml.dump(data, manifest_file)
             print(f"Generated {manifest_path}")
 
 

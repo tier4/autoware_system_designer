@@ -23,6 +23,7 @@ from ..exporting.json_io import extract_system_structure_data, load_system_struc
 from ..parsing.config import SystemConfig
 from ..parsing.loaders.data_validator import entity_name_decode
 from ..parsing.loaders.yaml_parser import yaml_parser
+from ..utils.path_utils import canonical_path
 
 
 def iter_mode_data(
@@ -54,7 +55,7 @@ def _resolve_deployments_path(input_path: str) -> str:
         candidate = Path(f"{input_path}.yaml")
 
     if candidate.exists() and candidate.is_file():
-        return str(candidate.resolve())
+        return canonical_path(str(candidate))
 
     raise ValidationError(
         f"Deployments table file not found: {candidate}. "
@@ -94,6 +95,15 @@ def _parse_deployments_list(deployments_path: str) -> Tuple[str, List[Dict[str, 
         deploy_list.append({"name": name, "arguments": arguments})
 
     return base, deploy_list
+
+
+def peek_target_system_name(input_path: str) -> str:
+    """System entity name the build target designates."""
+    if input_path.endswith(".deployments") or input_path.endswith(".deployments.yaml"):
+        table_path = _resolve_deployments_path(input_path)
+        base_name, _ = _parse_deployments_list(table_path)
+        return _normalize_system_name(base_name)
+    return _normalize_system_name(input_path)
 
 
 def resolve_input_target(

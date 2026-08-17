@@ -18,12 +18,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .building.config.config_registry import ConfigRegistry
+from .building.config.config_registry import ConfigRegistry, format_duplicate_report
 from .building.deployment_instance import DeploymentInstance
 from .deployment.deploy_launchers import generate_deploy_launchers
 from .deployment.deployment_config import DeploymentConfig
 from .deployment.modes import apply_mode_configuration, select_modes
-from .deployment.parser import iter_mode_data, resolve_input_target
+from .deployment.parser import iter_mode_data, peek_target_system_name, resolve_input_target
 from .exceptions import DeploymentError, ValidationError
 from .exporting.instance_to_json import collect_system_structure
 from .exporting.json_io import (
@@ -37,6 +37,12 @@ from .parsing.loaders.yaml_parser import yaml_parser
 from .ros2_launcher.generate_module_launcher import generate_module_launch_file
 from .template.parameter_template_generator import ParameterTemplateGenerator
 from .utils import generate_build_scripts
+from .utils.path_utils import (
+    PACKAGE_MAP_FILENAME,
+    WORKSPACE_ROOT_KEY,
+    canonical_path,
+    resolve_manifest_path,
+)
 from .visualization.launch_commands_page import generate_launch_commands_page
 from .visualization.visualize_deployment import visualize_deployment
 
@@ -45,45 +51,78 @@ logger = logging.getLogger(__name__)
 
 class Deployment:
     def __init__(self, deploy_config: DeploymentConfig):
-        # Layer 1: YAML → Config (via ConfigRegistry)
-        system_config, self.config_registry, self.deploy_variants, self.deployment_table_path = (
-            self._layer1_yaml_to_config(deploy_config)
-        )
+        self.config_registry: Optional[ConfigRegistry] = None
+        try:
+            # Layer 1: YAML → Config (via ConfigRegistry)
+            system_config, self.deploy_variants, self.deployment_table_path = self._layer1_yaml_to_config(deploy_config)
 
-        # Layer 2+3: Config → Instance → JSON (via DeploymentInstance and serialization)
-        self._initialize_from_system_config(system_config, deploy_config)
+            # Layer 2+3: Config → Instance → JSON (via DeploymentInstance and serialization)
+            self._initialize_from_system_config(system_config, deploy_config)
+        except Exception as exc:
+            # Failure hints read the registry off the exception when construction aborts.
+            exc.config_registry = self.config_registry
+            raise
 
     def _layer1_yaml_to_config(self, deploy_config: DeploymentConfig):
         """Layer 1: Load YAML manifests and resolve system config."""
         # Load manifests and build ConfigRegistry
         system_yaml_list, package_paths, file_package_map = self._get_system_list(deploy_config)
+        self._package_paths = package_paths
         config_registry = ConfigRegistry(
             system_yaml_list,
             package_paths,
             file_package_map,
             workspace_config=deploy_config.workspace_config,
+            strict=deploy_config.strict,
+            anchor_dir=deploy_config.anchor_dir or self._anchor_from_input(deploy_config.deployment_file),
         )
-        deployment_file_abs = str(Path(deploy_config.deployment_file).resolve())
-        config_registry.deployment_package_name = file_package_map.get(deployment_file_abs)
+        self.config_registry = config_registry
+        config_registry.deployment_package_name = file_package_map.get(canonical_path(deploy_config.deployment_file))
 
         logger.info("deployment init Deployment file: %s", deploy_config.deployment_file)
 
         # Resolve input target (could be deployment file or system-only file)
         input_path = deploy_config.deployment_file
-        deploy_variants: List[Dict[str, Any]] = []
-        deployment_table_path: Optional[str] = None
+
+        # Ranking inputs must be final before the first memoizing lookup.
+        self._finalize_selection_policy(input_path, config_registry, file_package_map)
 
         system_config, deploy_variants, deployment_table_path = resolve_input_target(input_path, config_registry)
         if not system_config:
             raise ValidationError(f"System not found from input: {input_path}")
 
-        # Fallback for deployments-table mode where deployment_file itself is not an entity file.
-        if config_registry.deployment_package_name is None:
-            system_file_abs = str(Path(system_config.file_path).resolve())
-            config_registry.deployment_package_name = file_package_map.get(system_file_abs)
-
         logger.info(f"Resolved system file path from registry: {system_config.file_path}")
-        return system_config, config_registry, deploy_variants, deployment_table_path
+        return system_config, deploy_variants, deployment_table_path
+
+    @staticmethod
+    def _finalize_selection_policy(
+        input_path: str,
+        config_registry: ConfigRegistry,
+        file_package_map: Dict[str, str],
+    ) -> None:
+        """Pin the anchor and preferred package to the target system before the first memoizing lookup."""
+        if config_registry.anchor_dir is not None and config_registry.deployment_package_name is not None:
+            return
+        try:
+            system_name = peek_target_system_name(input_path)
+        except ValidationError:
+            # resolve_input_target raises the canonical error for a broken target.
+            return
+        group = config_registry.system_group(system_name)
+        if group is None:
+            # resolve_input_target raises the canonical not-found error.
+            return
+        picked = group.choose(config_registry.selection_policy)
+        picked_path = canonical_path(str(picked.file_path))
+        if config_registry.deployment_package_name is None:
+            config_registry.deployment_package_name = file_package_map.get(picked_path) or picked.package
+        if config_registry.anchor_dir is None:
+            if group.is_duplicated:
+                logger.warning(
+                    f"Deployment target '{system_name}' is a bare entity name with duplicated definitions; "
+                    f"the anchor comes from the load-order pick:\n{group.describe()}"
+                )
+            config_registry.anchor_dir = str(Path(picked_path).parent)
 
     def _initialize_from_system_config(self, system_config: SystemConfig, deploy_config: DeploymentConfig):
         """Initialize deployment state from resolved system config."""
@@ -104,9 +143,8 @@ class Deployment:
         self.mode_keys: List[str] = []
         self.system_structure_snapshots: Dict[str, Dict[str, Any]] = {}
 
-        # Get package paths from layer 1
-        _, package_paths, _ = self._get_system_list(deploy_config)
-        self._build(system_config, package_paths)
+        # Package paths collected by layer 1.
+        self._build(system_config, self._package_paths)
 
     def _collect_deploy_variable_names(self) -> List[str]:
         variable_names: List[str] = []
@@ -144,6 +182,35 @@ class Deployment:
                 result.append(name)
         return result
 
+    @staticmethod
+    def _anchor_from_input(input_path: str) -> Optional[str]:
+        """Directory of the deployment target; None when the target is a bare entity name."""
+        if not input_path:
+            return None
+        path = Path(input_path)
+        return str(Path(canonical_path(input_path)).parent) if path.is_file() else None
+
+    @staticmethod
+    def _read_manifest_anchor(manifest_dir: str) -> str:
+        """Base directory for anchor-relative manifest paths; the manifest directory when unrecorded."""
+        package_map_file = os.path.join(manifest_dir, PACKAGE_MAP_FILENAME)
+        if not os.path.isfile(package_map_file):
+            return manifest_dir
+        try:
+            recorded = yaml_parser.load_config(package_map_file).get(WORKSPACE_ROOT_KEY)
+        except Exception as e:
+            logger.warning(f"Failed to read manifest anchor from {package_map_file}: {e}")
+            return manifest_dir
+        if not recorded:
+            return manifest_dir
+        if not os.path.isdir(recorded):
+            logger.warning(
+                f"Recorded workspace root '{recorded}' does not exist; "
+                f"resolving relative manifest paths against {manifest_dir}"
+            )
+            return manifest_dir
+        return recorded
+
     def _get_system_list(self, deploy_config: DeploymentConfig) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
         system_list: list[str] = []
         package_paths: Dict[str, str] = {}
@@ -151,6 +218,8 @@ class Deployment:
         manifest_dir = deploy_config.manifest_dir
         if not os.path.isdir(manifest_dir):
             raise ValidationError(f"System design manifest directory not found or not a directory: {manifest_dir}")
+
+        anchor = self._read_manifest_anchor(manifest_dir)
 
         for entry in sorted(os.listdir(manifest_dir)):
             if not entry.endswith(".yaml"):
@@ -161,7 +230,12 @@ class Deployment:
 
                 # Load package map if available
                 if "package_map" in manifest_yaml:
-                    package_paths.update(manifest_yaml["package_map"])
+                    package_paths.update(
+                        {
+                            name: resolve_manifest_path(path, anchor)
+                            for name, path in manifest_yaml["package_map"].items()
+                        }
+                    )
 
                 files = manifest_yaml.get("deploy_config_files")
                 # Allow the field to be empty or null without raising an error
@@ -176,6 +250,8 @@ class Deployment:
                     continue
                 for f in files:
                     file_path = f.get("path") if isinstance(f, dict) else None
+                    if file_path:
+                        file_path = resolve_manifest_path(file_path, anchor)
                     if file_path and file_path not in system_list:
                         system_list.append(file_path)
 
@@ -277,6 +353,18 @@ class Deployment:
                 details_str = f" ({', '.join(details)})" if details else ""
                 raise DeploymentError(f"Error while building deploy for mode '{mode_key}'{details_str}: {e}") from e
 
+        self._check_used_duplicates()
+
+    def _check_used_duplicates(self) -> None:
+        """Strict gate on duplicated names, raised once every mode has been built and reported."""
+        duplicates = self.config_registry.used_duplicates()
+        if not duplicates or not self.config_registry.strict:
+            return
+        raise ValidationError(
+            f"{len(duplicates)} duplicated entity name(s) are used by this deployment; "
+            f"'->' marks the definition in use:\n" + format_duplicate_report(duplicates)
+        )
+
     def visualize(self):
         """Layer 3+ Consumer: Generate visualization from JSON system structure."""
         # Collect data from all deployment instances
@@ -316,7 +404,7 @@ class Deployment:
 
         package_resolution_by_name: Dict[str, str | None] = {}
         packages_without_provider: set[str] = set()
-        for entity in self.config_registry.entities.values():
+        for entity in self.config_registry.iter_used_configs():
             if not isinstance(entity, NodeConfig):
                 continue
             pkg_name = entity.package_name

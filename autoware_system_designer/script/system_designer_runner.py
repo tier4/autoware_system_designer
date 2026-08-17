@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import List
 
 
+# Accepted set matches autoware_system_designer.utils.env.env_flag; this wrapper stays stdlib-only.
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "on", "yes", "y"}
 
@@ -214,6 +215,7 @@ def main(argv: List[str]) -> int:
 
     env = os.environ.copy()
     env["AUTOWARE_SYSTEM_DESIGNER_PRINT_LEVEL"] = args.print_level
+    env["AUTOWARE_SYSTEM_DESIGNER_STRICT"] = "1" if strict else "0"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
     command = [
