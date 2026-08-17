@@ -25,6 +25,11 @@ from ..parsing.config import SystemConfig
 logger = logging.getLogger(__name__)
 
 
+def _declared_mode_names(system_config: SystemConfig) -> List[str]:
+    """Mode names declared under `modes`, regardless of whether they carry an override block."""
+    return [m.get("name") for m in (system_config.modes or []) if isinstance(m, dict)]
+
+
 def apply_mode_configuration(base_system_config: SystemConfig, mode_name: str) -> SystemConfig:
     """Create a copy of base system and apply mode-specific overrides/removals."""
 
@@ -48,12 +53,16 @@ def apply_mode_configuration(base_system_config: SystemConfig, mode_name: str) -
 
     mode_config = base_system_config.mode_configs.get(mode_name)
     if not mode_config:
-        src = source_from_config(base_system_config, "/modes")
-        logger.warning(
-            "Mode '%s' not found in mode_configs, using base configuration%s",
-            mode_name,
-            format_source(src),
-        )
+        # A declared mode carrying no override block is the base configuration itself.
+        if mode_name not in _declared_mode_names(base_system_config):
+            src = source_from_config(base_system_config, "/modes")
+            logger.warning(
+                "Mode '%s' not found in mode_configs, using base configuration%s",
+                mode_name,
+                format_source(src),
+            )
+        else:
+            logger.debug("Mode '%s' has no override block; using base configuration", mode_name)
         return modified_config
 
     logger.info("Applying mode configuration for mode '%s'", mode_name)
