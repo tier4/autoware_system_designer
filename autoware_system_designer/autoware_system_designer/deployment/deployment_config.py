@@ -39,6 +39,9 @@ class DeploymentConfig:
     manifest_dir: str = ""
     output_root_dir: str = "build"
     workspace_config: Optional[List[Dict[str, Any]]] = None
+    # Directory duplicated entity candidates are ranked by proximity to. None when the
+    # deployment target is a bare entity name rather than a path.
+    anchor_dir: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "DeploymentConfig":

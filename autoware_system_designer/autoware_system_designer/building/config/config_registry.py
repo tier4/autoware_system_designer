@@ -14,8 +14,9 @@
 
 import copy
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Type
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
 
 from ...exceptions import (
     FormatVersionError,
@@ -64,6 +65,85 @@ def _format_mismatch_hint(mismatch_files: list) -> str:
     )
 
 
+# Distance stand-in when no anchor is known, leaving load order to break the tie.
+_UNRANKED = 1 << 20
+
+
+def _path_distance(anchor: Path, target: Path) -> int:
+    """Number of steps between two paths, walking up to their common ancestor and back down."""
+    anchor_parts = anchor.parts
+    target_parts = target.parts
+    shared = 0
+    for left, right in zip(anchor_parts, target_parts):
+        if left != right:
+            break
+        shared += 1
+    return (len(anchor_parts) - shared) + (len(target_parts) - shared)
+
+
+@dataclass(frozen=True)
+class SelectionPolicy:
+    """Ranking inputs for picking one config among several declaring the same name."""
+
+    anchor_dir: Optional[Path] = None
+    preferred_package: Optional[str] = None
+
+    def rank(self, config: Config) -> Tuple[int, int]:
+        """Preferred package first, then proximity to the anchor; lower wins."""
+        tier = 0 if self.preferred_package and config.package == self.preferred_package else 1
+        if self.anchor_dir is None:
+            return tier, _UNRANKED
+        return tier, _path_distance(self.anchor_dir, Path(config.file_path))
+
+
+@dataclass
+class EntityGroup:
+    """Every config declaring one full_name, in load order. Selection is memoized on first use."""
+
+    full_name: str
+    name: str
+    entity_type: str
+    candidates: List[Config] = field(default_factory=list)
+    _selected: Optional[Config] = None
+
+    @property
+    def is_duplicated(self) -> bool:
+        return len(self.candidates) > 1
+
+    @property
+    def used(self) -> bool:
+        return self._selected is not None
+
+    def choose(self, policy: SelectionPolicy) -> Config:
+        """Best candidate under *policy*, load order breaking ties. Leaves the group unused."""
+        if self._selected is not None:
+            return self._selected
+        best = min(range(len(self.candidates)), key=lambda i: (policy.rank(self.candidates[i]), i))
+        return self.candidates[best]
+
+    def resolve(self, policy: SelectionPolicy) -> Tuple[Config, bool]:
+        """Select and memoize; the flag marks the first resolution, which gates reporting."""
+        if self._selected is not None:
+            return self._selected, False
+        self._selected = self.choose(policy)
+        return self._selected, True
+
+    def describe(self) -> str:
+        """Candidate list with '->' on the selection."""
+        chosen = self._selected
+        return "\n".join(
+            f"  {'->' if candidate is chosen else '  '} {candidate.file_path}"
+            + (f"  [{candidate.package}]" if candidate.package else "")
+            for candidate in self.candidates
+        )
+
+
+def format_duplicate_report(groups: List[EntityGroup]) -> str:
+    """Human-readable listing of duplicated names, '->' marking the definition in use."""
+    blocks = [f"Duplicate entity '{group.full_name}':\n{group.describe()}" for group in groups]
+    return "\n".join(blocks)
+
+
 class ConfigRegistry:
     """Collection for managing multiple entity data structures with efficient lookup methods."""
 
@@ -74,15 +154,11 @@ class ConfigRegistry:
         file_package_map: Dict[str, str] = None,
         workspace_config: List[Dict[str, Any]] = None,
         strict: bool = False,
+        anchor_dir: Optional[str] = None,
     ):
-        # Replace list with dict as primary storage
-        self.entities: Dict[str, Config] = {}  # full_name → Config
-        self._type_map: Dict[str, Dict[str, Config]] = {
-            ConfigType.NODE: {},
-            ConfigType.MODULE: {},
-            ConfigType.PARAMETER_SET: {},
-            ConfigType.SYSTEM: {},
-        }
+        # Sole entity store: full_name → every config declaring that name. A name is duplicated
+        # when its group holds more than one candidate; which one wins is decided lazily, on use.
+        self.entities: Dict[str, EntityGroup] = {}
         self.package_paths = package_paths or {}
         self.file_package_map = file_package_map or {}
         self._package_source_paths: Dict[str, Optional[str]] = {}
@@ -103,14 +179,20 @@ class ConfigRegistry:
 
         self.strict = strict
 
-        # full_name → every config declaring that name, in load order.
-        # The workspace-wide scan records collisions without failing; they are
-        # reported only when the deployed system actually uses the entity.
-        self.duplicate_entities: Dict[str, List[Config]] = {}
-        self._reported_duplicates: Set[str] = set()
+        # Anchor duplicated candidates are ranked against; assignable until the first lookup.
+        self.anchor_dir: Optional[str] = anchor_dir
 
         self.parser = ConfigParser()
         self._load_entities(config_yaml_file_paths)
+        self._log_duplicate_scan()
+
+    @property
+    def selection_policy(self) -> SelectionPolicy:
+        """Current ranking inputs for duplicated names."""
+        return SelectionPolicy(
+            anchor_dir=Path(self.anchor_dir) if self.anchor_dir else None,
+            preferred_package=self.deployment_package_name,
+        )
 
     def _load_entities(self, config_yaml_file_paths: List[str]) -> None:
         """Load entities from configuration files."""
@@ -154,20 +236,15 @@ class ConfigRegistry:
                     if resolution:
                         entity_data.package_resolution = resolution
 
-                # Record duplicates and keep the entity already registered.
-                if entity_data.full_name in self.entities:
-                    existing = self.entities[entity_data.full_name]
-                    candidates = self.duplicate_entities.setdefault(entity_data.full_name, [existing])
-                    candidates.append(entity_data)
-                    logger.info(
-                        f"Duplicate entity '{entity_data.full_name}' encountered: {entity_data.file_path} "
-                        f"(currently using {existing.file_path}; may be overridden by deployment package)"
+                group = self.entities.get(entity_data.full_name)
+                if group is None:
+                    group = EntityGroup(
+                        full_name=entity_data.full_name,
+                        name=entity_data.name,
+                        entity_type=entity_data.entity_type,
                     )
-                    continue
-
-                # Add to collections
-                self.entities[entity_data.full_name] = entity_data
-                self._type_map[entity_data.entity_type][entity_data.name] = entity_data
+                    self.entities[entity_data.full_name] = group
+                group.candidates.append(entity_data)
 
             except Exception as e:
                 src = SourceLocation(file_path=Path(file_path))
@@ -183,51 +260,39 @@ class ConfigRegistry:
 
     def get(self, name: str, default=None) -> Optional[Config]:
         """Get entity by name with default value."""
-        return self.entities.get(name, default)
+        group = self.entities.get(name)
+        return group.choose(self.selection_policy) if group else default
 
-    def resolve_duplicates(self) -> Set[str]:
-        """Repoint duplicated entities at the deployment package's copy.
+    def iter_configs(self) -> Iterator[Config]:
+        """One config per known name, without marking any group used."""
+        policy = self.selection_policy
+        for group in self.entities.values():
+            yield group.choose(policy)
 
-        Requires deployment_package_name to be final. Returns the full names whose
-        registered entity changed.
-        """
-        swapped: Set[str] = set()
-        if not self.deployment_package_name:
-            return swapped
+    def all_duplicates(self) -> List[EntityGroup]:
+        """Every duplicated name in the scan, whether the deployment reaches it or not."""
+        return [group for group in self.entities.values() if group.is_duplicated]
 
-        for full_name, candidates in self.duplicate_entities.items():
-            registered = self.entities.get(full_name)
-            preferred = next(
-                (c for c in candidates if c.package == self.deployment_package_name),
-                None,
-            )
-            if preferred is None or preferred is registered:
-                continue
-            self.entities[full_name] = preferred
-            self._type_map[preferred.entity_type][preferred.name] = preferred
-            swapped.add(full_name)
+    def used_duplicates(self) -> List[EntityGroup]:
+        """Duplicated names this deployment actually resolved."""
+        return [group for group in self.entities.values() if group.is_duplicated and group.used]
 
-        return swapped
-
-    def _check_duplicate_use(self, entity: Config) -> None:
-        """Report a duplicated entity at the point the deployed system uses it."""
-        candidates = self.duplicate_entities.get(entity.full_name)
-        if not candidates or entity.full_name in self._reported_duplicates:
+    def _log_duplicate_scan(self) -> None:
+        """Workspace-wide collision summary; the deployment-relevant subset is reported on use."""
+        duplicates = self.all_duplicates()
+        if not duplicates:
             return
-        self._reported_duplicates.add(entity.full_name)
-
-        lines = [
-            f"  {'->' if c is entity else '  '} {c.file_path}" + (f"  [{c.package}]" if c.package else "")
-            for c in candidates
-        ]
-        message = (
-            f"Duplicate entity '{entity.full_name}' is used by this deployment; "
-            f"'->' marks the definition in use:\n" + "\n".join(lines)
+        logger.debug(
+            f"{len(duplicates)} duplicated entity name(s) in the scan:\n" + format_duplicate_report(duplicates)
         )
-        src = format_source(source_from_config(entity, "/name"))
-        if self.strict:
-             raise ValidationError(f"{message}{src}")
-        logger.warning(f"{message}{src}")
+
+    def _report_duplicate(self, group: EntityGroup, chosen: Config) -> None:
+        """Surface a duplicated name at the point the deployed system first uses it."""
+        message = (
+            f"Duplicate entity '{group.full_name}' is used by this deployment; "
+            f"'->' marks the definition in use:\n{group.describe()}"
+        )
+        logger.warning(f"{message}{format_source(source_from_config(chosen, '/name'))}")
 
     def _get_entity_with_base(
         self,
@@ -240,22 +305,24 @@ class ConfigRegistry:
         """
         Generic method to get an entity and resolve base/variant if applicable.
         """
-        entity = self._type_map[config_type].get(name)
+        group = self.entities.get(f"{name}.{config_type}")
 
-        # If not found, try decoding the name (e.g. MyNode.node -> MyNode)
-        if entity is None and "." in name:
+        # If not found, the caller may already have passed a full_name (e.g. MyNode.node)
+        if group is None and "." in name:
             try:
                 decoded_name, entity_type = entity_name_decode(name)
                 if entity_type == config_type:
-                    entity = self._type_map[config_type].get(decoded_name)
+                    group = self.entities.get(f"{decoded_name}.{config_type}")
             except ValidationError:
                 pass
 
-        if entity is None:
-            available = list(self._type_map[config_type].keys())
+        if group is None:
+            available = [g.name for g in self.entities.values() if g.entity_type == config_type]
             raise error_cls(f"{config_type.capitalize()} '{name}' not found. Available {config_type}s: {available}")
 
-        self._check_duplicate_use(entity)
+        entity, first_use = group.resolve(self.selection_policy)
+        if first_use and group.is_duplicated:
+            self._report_duplicate(group, entity)
 
         if entity.sub_type == ConfigSubType.VARIANT:
             if not resolver_cls or not recursive_getter:

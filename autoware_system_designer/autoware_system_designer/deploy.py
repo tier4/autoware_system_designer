@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .building.config.config_registry import ConfigRegistry
+from .building.config.config_registry import ConfigRegistry, format_duplicate_report
 from .building.deployment_instance import DeploymentInstance
 from .deployment.deploy_launchers import generate_deploy_launchers
 from .deployment.deployment_config import DeploymentConfig
@@ -68,6 +68,7 @@ class Deployment:
             file_package_map,
             workspace_config=deploy_config.workspace_config,
             strict=deploy_config.strict,
+            anchor_dir=deploy_config.anchor_dir or self._anchor_from_input(deploy_config.deployment_file),
         )
         deployment_file_abs = str(Path(deploy_config.deployment_file).resolve())
         config_registry.deployment_package_name = file_package_map.get(deployment_file_abs)
@@ -88,10 +89,10 @@ class Deployment:
             system_file_abs = str(Path(system_config.file_path).resolve())
             config_registry.deployment_package_name = file_package_map.get(system_file_abs)
 
-        # Duplicated names resolve to the deployment package's copy; re-resolve when the
-        # system entity itself was one of them.
-        if system_config.full_name in config_registry.resolve_duplicates():
-            system_config, deploy_variants, deployment_table_path = resolve_input_target(input_path, config_registry)
+        # A bare entity name gives no anchor up front; the resolved system supplies one for
+        # every lookup that follows.
+        if config_registry.anchor_dir is None:
+            config_registry.anchor_dir = str(Path(system_config.file_path).resolve().parent)
 
         logger.info(f"Resolved system file path from registry: {system_config.file_path}")
         return system_config, config_registry, deploy_variants, deployment_table_path
@@ -154,6 +155,14 @@ class Deployment:
                 seen.add(name)
                 result.append(name)
         return result
+
+    @staticmethod
+    def _anchor_from_input(input_path: str) -> Optional[str]:
+        """Directory of the deployment target; None when the target is a bare entity name."""
+        if not input_path:
+            return None
+        path = Path(input_path)
+        return str(path.resolve().parent) if path.is_file() else None
 
     @staticmethod
     def _read_manifest_anchor(manifest_dir: str) -> str:
@@ -309,6 +318,18 @@ class Deployment:
                 details_str = f" ({', '.join(details)})" if details else ""
                 raise DeploymentError(f"Error while building deploy for mode '{mode_key}'{details_str}: {e}") from e
 
+        self._check_used_duplicates()
+
+    def _check_used_duplicates(self) -> None:
+        """Strict gate on duplicated names, raised once every mode has been built and reported."""
+        duplicates = self.config_registry.used_duplicates()
+        if not duplicates or not self.config_registry.strict:
+            return
+        raise ValidationError(
+            f"{len(duplicates)} duplicated entity name(s) are used by this deployment; "
+            f"'->' marks the definition in use:\n" + format_duplicate_report(duplicates)
+        )
+
     def visualize(self):
         """Layer 3+ Consumer: Generate visualization from JSON system structure."""
         # Collect data from all deployment instances
@@ -348,7 +369,7 @@ class Deployment:
 
         package_resolution_by_name: Dict[str, str | None] = {}
         packages_without_provider: set[str] = set()
-        for entity in self.config_registry.entities.values():
+        for entity in self.config_registry.iter_configs():
             if not isinstance(entity, NodeConfig):
                 continue
             pkg_name = entity.package_name

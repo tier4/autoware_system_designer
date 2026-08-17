@@ -99,7 +99,24 @@ def build(deployment_file: str, manifest_dir: str, output_root_dir: str, workspa
         # before a Deployment was fully constructed we still have the
         # registry to check.
         _emit_minor_version_hint(deployment)
+        _emit_duplicate_hint(deployment)
         raise
+
+
+def _emit_duplicate_hint(deployment):
+    """Log the duplicated names the deployment reached, if any."""
+    registry = getattr(deployment, "config_registry", None) if deployment else None
+    if registry is None:
+        return
+    duplicates = registry.used_duplicates()
+    if not duplicates:
+        return
+    from autoware_system_designer.building.config.config_registry import format_duplicate_report
+
+    _logger.warning(
+        f"Note: {len(duplicates)} duplicated entity name(s) are used by this deployment. "
+        f"This may have contributed to the error:\n" + format_duplicate_report(duplicates)
+    )
 
 
 def _emit_minor_version_hint(deployment):
