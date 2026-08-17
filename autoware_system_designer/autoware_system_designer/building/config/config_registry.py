@@ -160,8 +160,8 @@ class ConfigRegistry:
                     candidates = self.duplicate_entities.setdefault(entity_data.full_name, [existing])
                     candidates.append(entity_data)
                     logger.info(
-                        f"Duplicate entity '{entity_data.full_name}' ignored: {entity_data.file_path} "
-                        f"(using {existing.file_path})"
+                        f"Duplicate entity '{entity_data.full_name}' encountered: {entity_data.file_path} "
+                        f"(currently using {existing.file_path}; may be overridden by deployment package)"
                     )
                     continue
 
