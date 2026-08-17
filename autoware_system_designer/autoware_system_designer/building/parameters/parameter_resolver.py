@@ -73,7 +73,8 @@ class ParameterResolver:
 
         # Regex patterns for substitutions
         self.env_pattern = re.compile(r"\$\(env\s+([^)]+)\)")
-        self.var_pattern = re.compile(r"\$\(var\s+([\w\.]+)\)")
+        # '/' is part of a name: ROS launch args are freely named, e.g. $(var group/enable)
+        self.var_pattern = re.compile(r"\$\(var\s+([\w./]+)\)")
         self.pkgshare_pattern = re.compile(r"\$\(find-pkg-share\s+([^)]+)\)")
         # eval_pattern removed in favor of manual parsing to support balanced parentheses
 

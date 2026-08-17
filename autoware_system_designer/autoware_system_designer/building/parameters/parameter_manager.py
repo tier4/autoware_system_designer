@@ -330,6 +330,7 @@ class ParameterManager:
         package_name: Optional[str] = None,
         is_override: bool = False,
         config_registry: Optional["ConfigRegistry"] = None,
+        resolver=None,
     ) -> str:
         """Resolve parameter file path with package prefix if needed.
 
@@ -338,6 +339,7 @@ class ParameterManager:
             package_name: The ROS package name for default parameters
             is_override: True for override parameter files, False for default
             config_registry: Registry to look up package paths
+            resolver: Substitution scope to resolve against; defaults to the instance resolver
 
         Returns:
             Resolved path with package prefix if applicable
@@ -349,8 +351,9 @@ class ParameterManager:
             )
 
         # Resolve any substitutions in the path first
-        if self.parameter_resolver:
-            path = self.parameter_resolver.resolve_string(path)
+        active_resolver = resolver or self.parameter_resolver
+        if active_resolver:
+            path = active_resolver.resolve_string(path)
 
         # If path is now absolute, return it
         if path.startswith("/"):
@@ -685,7 +688,17 @@ class ParameterManager:
         if self.instance.configuration and hasattr(self.instance.configuration, "package_name"):
             package_name = self.instance.configuration.package_name
 
-        # 1. Set default parameter_files from node configuration
+        # 1. Resolve param_values first: they are the node's launch-arg scope, so the node's own
+        # param files resolve their $(var ...) against them. The scope is a private copy, keeping
+        # one node's values out of its siblings' resolution.
+        resolved_param_values = self._resolve_node_param_values()
+        node_resolver = self.parameter_resolver
+        if resolved_param_values and node_resolver:
+            node_resolver = node_resolver.copy()
+            for entry in resolved_param_values:
+                node_resolver.variable_map[entry["name"]] = str(entry["value"])
+
+        # 2. Set default parameter_files from node configuration
         # Use new param_files field, fallback to parameter_files is handled in parser
         if hasattr(self.instance.configuration, "param_files") and self.instance.configuration.param_files:
             for idx, cfg_param in enumerate(self.instance.configuration.param_files):
@@ -700,8 +713,8 @@ class ParameterManager:
                     )
 
                 # Resolve parameter file path if resolver is available
-                if self.parameter_resolver:
-                    param_value = self.parameter_resolver.resolve_parameter_file_path(param_value, source=cfg_source)
+                if node_resolver:
+                    param_value = node_resolver.resolve_parameter_file_path(param_value, source=cfg_source)
 
                 # Add to parameter_files list
                 self.parameter_files.add_parameter_file(
@@ -720,39 +733,56 @@ class ParameterManager:
                     is_override=False,  # Node configuration parameter files are defaults
                     config_registry=config_registry,
                     source=cfg_source,
+                    resolver=node_resolver,
                 )
 
-        # 2. Set default parameters from node parameters
+        # 3. Set default parameters from node parameters
+        for entry in resolved_param_values:
+            self.parameters.set_parameter(
+                entry["name"],
+                entry["value"],
+                data_type=entry["type"],
+                allow_substs=True,
+                parameter_type=ParameterType.DEFAULT,  # These are default parameters
+                source=entry["source"],
+            )
+
+    def _resolve_node_param_values(self) -> List[Dict[str, Any]]:
+        """Resolve the node's param_values against the inherited substitution scope.
+
+        Entries whose value normalizes to None are dropped; the survivors both seed the
+        node's variable scope and become its DEFAULT parameters.
+        """
         # Use new param_values field, fallback to parameters is handled in parser
-        if hasattr(self.instance.configuration, "param_values") and self.instance.configuration.param_values:
-            for idx, cfg_param in enumerate(self.instance.configuration.param_values):
-                param_name = cfg_param.name
-                param_value = cfg_param.value
-                param_type = cfg_param.type
+        if not (hasattr(self.instance.configuration, "param_values") and self.instance.configuration.param_values):
+            return []
 
-                cfg_source = source_from_config(self.instance.configuration, f"/param_values/{idx}")
+        resolved: List[Dict[str, Any]] = []
+        for idx, cfg_param in enumerate(self.instance.configuration.param_values):
+            param_name = cfg_param.name
+            param_value = cfg_param.value
+            param_type = cfg_param.type
 
-                if param_name is None or param_value is None:
-                    raise ParameterConfigurationError(
-                        f"param_name or param_value is None. path: {self.instance.path}, param_values: {self.instance.configuration.param_values}"
-                    )
+            cfg_source = source_from_config(self.instance.configuration, f"/param_values/{idx}")
 
-                # Resolve parameter value if resolver is available
-                if self.parameter_resolver:
-                    param_value = self.parameter_resolver.resolve_parameter_value(param_value, source=cfg_source)
+            if param_name is None or param_value is None:
+                raise ParameterConfigurationError(
+                    f"param_name or param_value is None. path: {self.instance.path}, param_values: {self.instance.configuration.param_values}"
+                )
 
-                param_value = self._normalize_parameter_value(param_value, param_type, cfg_source)
+            # Resolve parameter value if resolver is available
+            if self.parameter_resolver:
+                param_value = self.parameter_resolver.resolve_parameter_value(param_value, source=cfg_source)
 
-                # Only set if a default value is provided
-                if param_value is not None:
-                    self.parameters.set_parameter(
-                        param_name,
-                        param_value,
-                        data_type=param_type,
-                        allow_substs=True,
-                        parameter_type=ParameterType.DEFAULT,  # These are default parameters
-                        source=cfg_source,
-                    )
+            param_value = self._normalize_parameter_value(param_value, param_type, cfg_source)
+
+            # Only set if a default value is provided
+            if param_value is None:
+                continue
+
+            resolved.append({"name": param_name, "value": param_value, "type": param_type, "source": cfg_source})
+
+        return resolved
 
     def _flatten_parameters(self, params: Dict[str, Any], parent_key: str = "", separator: str = ".") -> Dict[str, Any]:
         """Flatten nested dictionary into dot-separated keys.
@@ -794,6 +824,7 @@ class ParameterManager:
         is_override: bool,
         config_registry: "ConfigRegistry",
         source: Optional[SourceLocation],
+        resolver=None,
     ) -> Optional[str]:
         """Resolve a parameter file path to an existing absolute path (for visualization/template generation).
 
@@ -801,7 +832,9 @@ class ParameterManager:
         path can't be resolved to an existing absolute file.
         """
 
-        resolved_path = self._resolve_parameter_file_path(file_path, package_name, is_override, config_registry)
+        resolved_path = self._resolve_parameter_file_path(
+            file_path, package_name, is_override, config_registry, resolver=resolver
+        )
 
         # Only load when resolved to an absolute filesystem path with no remaining substitutions.
         if not resolved_path or resolved_path.startswith("$") or not os.path.isabs(resolved_path):
@@ -867,6 +900,7 @@ class ParameterManager:
         config_registry: Optional["ConfigRegistry"] = None,
         parameter_type: Optional[ParameterType] = None,
         source: Optional[SourceLocation] = None,
+        resolver=None,
     ):
         """Load parameters from a YAML file and add them to the parameter list."""
         if not config_registry:
@@ -880,6 +914,7 @@ class ParameterManager:
                 is_override,
                 config_registry,
                 source,
+                resolver=resolver,
             )
             if not existing_path:
                 return
@@ -903,9 +938,10 @@ class ParameterManager:
             if effective_type not in (ParameterType.DEFAULT_FILE, ParameterType.OVERRIDE_FILE, ParameterType.MODE_FILE):
                 return
 
+            active_resolver = resolver or self.parameter_resolver
             for p_name, p_value in flattened_params.items():
-                if self.parameter_resolver:
-                    p_value = self.parameter_resolver.resolve_parameter_value(p_value, source=source)
+                if active_resolver:
+                    p_value = active_resolver.resolve_parameter_value(p_value, source=source)
                 self.parameters.set_parameter(
                     p_name,
                     p_value,
