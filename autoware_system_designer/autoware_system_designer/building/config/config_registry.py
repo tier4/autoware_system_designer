@@ -224,9 +224,10 @@ class ConfigRegistry:
             f"Duplicate entity '{entity.full_name}' is used by this deployment; "
             f"'->' marks the definition in use:\n" + "\n".join(lines)
         )
+        src = format_source(source_from_config(entity, "/name"))
         if self.strict:
-            raise ValidationError(message)
-        logger.warning(f"{message}{format_source(source_from_config(entity, '/name'))}")
+             raise ValidationError(f"{message}{src}")
+        logger.warning(f"{message}{src}")
 
     def _get_entity_with_base(
         self,
