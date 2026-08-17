@@ -62,6 +62,7 @@ class Deployment:
             package_paths,
             file_package_map,
             workspace_config=deploy_config.workspace_config,
+            strict=deploy_config.strict,
         )
         deployment_file_abs = str(Path(deploy_config.deployment_file).resolve())
         config_registry.deployment_package_name = file_package_map.get(deployment_file_abs)
@@ -81,6 +82,11 @@ class Deployment:
         if config_registry.deployment_package_name is None:
             system_file_abs = str(Path(system_config.file_path).resolve())
             config_registry.deployment_package_name = file_package_map.get(system_file_abs)
+
+        # Duplicated names resolve to the deployment package's copy; re-resolve when the
+        # system entity itself was one of them.
+        if system_config.full_name in config_registry.resolve_duplicates():
+            system_config, deploy_variants, deployment_table_path = resolve_input_target(input_path, config_registry)
 
         logger.info(f"Resolved system file path from registry: {system_config.file_path}")
         return system_config, config_registry, deploy_variants, deployment_table_path

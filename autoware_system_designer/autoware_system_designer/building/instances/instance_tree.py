@@ -50,8 +50,9 @@ def set_instances(
             set_module_instances(instance, entity_id, entity_name, config_registry)
         elif entity_type == "node":
             set_node_instances(instance, entity_id, entity_name, config_registry)
-    except Exception:
-        raise ValidationError(f"Error setting instances for {entity_id}, at {instance.configuration.file_path}")
+    except Exception as e:
+        location = f", at {instance.configuration.file_path}" if instance.configuration else ""
+        raise ValidationError(f"Error setting instances for {entity_id}{location}: {e}") from e
 
 
 def set_system_instances(instance: "Instance", config_registry: "ConfigRegistry") -> None:
@@ -79,12 +80,12 @@ def set_system_instances(instance: "Instance", config_registry: "ConfigRegistry"
 
         try:
             set_instances(child_instance, entity_id, config_registry)
-        except Exception:
+        except Exception as e:
             # add the instance to the children dict for debugging
             instance.children[instance_name] = child_instance
             raise ValidationError(
-                f"Error in setting component instance '{instance_name}', at {instance.configuration.file_path}"
-            )
+                f"Error in setting component instance '{instance_name}', at {instance.configuration.file_path}: {e}"
+            ) from e
 
         instance.children[instance_name] = child_instance
         logger.debug(
@@ -215,7 +216,7 @@ def create_module_children(instance: "Instance", config_registry: "ConfigRegistr
             instance.children[child_name] = child_instance
             raise ValidationError(
                 f"Error in setting child instance {child_name} : {e}, at {instance.configuration.file_path}"
-            )
+            ) from e
         instance.children[child_name] = child_instance
 
 

@@ -112,7 +112,7 @@ def _emit_minor_version_hint(deployment):
     files = getattr(registry, "minor_version_mismatch_files", [])
     if not files:
         return
-    from autoware_system_designer.builder.config.config_registry import _format_mismatch_hint
+    from autoware_system_designer.building.config.config_registry import _format_mismatch_hint
 
     _logger.warning(_format_mismatch_hint(files))
 

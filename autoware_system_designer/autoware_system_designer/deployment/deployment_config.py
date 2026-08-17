@@ -31,6 +31,8 @@ class DeploymentConfig:
     print_level: str = "ERROR"
     cache_enabled: bool = False
     max_cache_size: int = 128
+    # Tolerated-in-general-workspace conditions are fatal when set.
+    strict: bool = False
 
     # paths
     deployment_file: str = ""
@@ -47,6 +49,7 @@ class DeploymentConfig:
             print_level=os.getenv("AUTOWARE_SYSTEM_DESIGNER_PRINT_LEVEL", "ERROR"),
             cache_enabled=os.getenv("AUTOWARE_SYSTEM_DESIGNER_CACHE_ENABLED", "true").lower() == "true",
             max_cache_size=int(os.getenv("AUTOWARE_SYSTEM_DESIGNER_MAX_CACHE_SIZE", "128")),
+            strict=os.getenv("AUTOWARE_SYSTEM_DESIGNER_STRICT", "0").lower() in ("1", "on", "true"),
         )
 
     def set_logging(self) -> logging.Logger:

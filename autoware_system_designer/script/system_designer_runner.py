@@ -214,6 +214,7 @@ def main(argv: List[str]) -> int:
 
     env = os.environ.copy()
     env["AUTOWARE_SYSTEM_DESIGNER_PRINT_LEVEL"] = args.print_level
+    env["AUTOWARE_SYSTEM_DESIGNER_STRICT"] = "1" if strict else "0"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
     command = [

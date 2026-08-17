@@ -15,7 +15,7 @@
 import copy
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Set, Type
 
 from ...exceptions import (
     FormatVersionError,
@@ -24,7 +24,7 @@ from ...exceptions import (
     ParameterConfigurationError,
     ValidationError,
 )
-from ...file_io.source_location import SourceLocation, format_source
+from ...file_io.source_location import SourceLocation, format_source, source_from_config
 from ...parsing.config import (
     Config,
     ConfigSubType,
@@ -73,6 +73,7 @@ class ConfigRegistry:
         package_paths: Dict[str, str] = None,
         file_package_map: Dict[str, str] = None,
         workspace_config: List[Dict[str, Any]] = None,
+        strict: bool = False,
     ):
         # Replace list with dict as primary storage
         self.entities: Dict[str, Config] = {}  # full_name → Config
@@ -99,6 +100,14 @@ class ConfigRegistry:
         # Track files whose minor format version is newer than the tool supports.
         # Populated during _load_entities; surfaced to the user when the build fails.
         self.minor_version_mismatch_files: List[str] = []
+
+        self.strict = strict
+
+        # full_name → every config declaring that name, in load order.
+        # The workspace-wide scan records collisions without failing; they are
+        # reported only when the deployed system actually uses the entity.
+        self.duplicate_entities: Dict[str, List[Config]] = {}
+        self._reported_duplicates: Set[str] = set()
 
         self.parser = ConfigParser()
         self._load_entities(config_yaml_file_paths)
@@ -145,14 +154,16 @@ class ConfigRegistry:
                     if resolution:
                         entity_data.package_resolution = resolution
 
-                # Check for duplicates
+                # Record duplicates and keep the entity already registered.
                 if entity_data.full_name in self.entities:
                     existing = self.entities[entity_data.full_name]
-                    raise ValidationError(
-                        f"Duplicate entity '{entity_data.full_name}' found:\n"
-                        f"  New: {entity_data.file_path}\n"
-                        f"  Existing: {existing.file_path}"
+                    candidates = self.duplicate_entities.setdefault(entity_data.full_name, [existing])
+                    candidates.append(entity_data)
+                    logger.info(
+                        f"Duplicate entity '{entity_data.full_name}' ignored: {entity_data.file_path} "
+                        f"(using {existing.file_path})"
                     )
+                    continue
 
                 # Add to collections
                 self.entities[entity_data.full_name] = entity_data
@@ -173,6 +184,49 @@ class ConfigRegistry:
     def get(self, name: str, default=None) -> Optional[Config]:
         """Get entity by name with default value."""
         return self.entities.get(name, default)
+
+    def resolve_duplicates(self) -> Set[str]:
+        """Repoint duplicated entities at the deployment package's copy.
+
+        Requires deployment_package_name to be final. Returns the full names whose
+        registered entity changed.
+        """
+        swapped: Set[str] = set()
+        if not self.deployment_package_name:
+            return swapped
+
+        for full_name, candidates in self.duplicate_entities.items():
+            registered = self.entities.get(full_name)
+            preferred = next(
+                (c for c in candidates if c.package == self.deployment_package_name),
+                None,
+            )
+            if preferred is None or preferred is registered:
+                continue
+            self.entities[full_name] = preferred
+            self._type_map[preferred.entity_type][preferred.name] = preferred
+            swapped.add(full_name)
+
+        return swapped
+
+    def _check_duplicate_use(self, entity: Config) -> None:
+        """Report a duplicated entity at the point the deployed system uses it."""
+        candidates = self.duplicate_entities.get(entity.full_name)
+        if not candidates or entity.full_name in self._reported_duplicates:
+            return
+        self._reported_duplicates.add(entity.full_name)
+
+        lines = [
+            f"  {'->' if c is entity else '  '} {c.file_path}" + (f"  [{c.package}]" if c.package else "")
+            for c in candidates
+        ]
+        message = (
+            f"Duplicate entity '{entity.full_name}' is used by this deployment; "
+            f"'->' marks the definition in use:\n" + "\n".join(lines)
+        )
+        if self.strict:
+            raise ValidationError(message)
+        logger.warning(f"{message}{format_source(source_from_config(entity, '/name'))}")
 
     def _get_entity_with_base(
         self,
@@ -199,6 +253,8 @@ class ConfigRegistry:
         if entity is None:
             available = list(self._type_map[config_type].keys())
             raise error_cls(f"{config_type.capitalize()} '{name}' not found. Available {config_type}s: {available}")
+
+        self._check_duplicate_use(entity)
 
         if entity.sub_type == ConfigSubType.VARIANT:
             if not resolver_cls or not recursive_getter:
