@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -28,7 +29,14 @@ def load_package_map(path: Path) -> dict[str, str]:
         return {}
     with open(path) as f:
         data = yaml.safe_load(f) or {}
-    return data.get("package_map", {})
+    anchor = Path(data.get("workspace_root") or path.parent)
+    return {name: _resolve(share, anchor) for name, share in (data.get("package_map") or {}).items()}
+
+
+def _resolve(share: str, anchor: Path) -> str:
+    """Manifest paths are anchor-relative; absolute entries pass through unchanged."""
+    p = Path(share)
+    return share if p.is_absolute() else os.path.normpath(anchor / p)
 
 
 def find_package_map() -> Optional[Path]:

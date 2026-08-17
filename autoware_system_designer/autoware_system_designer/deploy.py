@@ -43,6 +43,11 @@ from .visualization.visualize_deployment import visualize_deployment
 logger = logging.getLogger(__name__)
 
 
+def _resolve_manifest_path(path: str, anchor: str) -> str:
+    """Manifest paths are anchor-relative; absolute entries pass through unchanged."""
+    return path if os.path.isabs(path) else os.path.normpath(os.path.join(anchor, path))
+
+
 class Deployment:
     def __init__(self, deploy_config: DeploymentConfig):
         # Layer 1: YAML → Config (via ConfigRegistry)
@@ -150,6 +155,18 @@ class Deployment:
                 result.append(name)
         return result
 
+    @staticmethod
+    def _read_manifest_anchor(manifest_dir: str) -> str:
+        """Base directory for anchor-relative manifest paths; the manifest directory when unrecorded."""
+        package_map_file = os.path.join(manifest_dir, "_package_map.yaml")
+        if not os.path.isfile(package_map_file):
+            return manifest_dir
+        try:
+            return yaml_parser.load_config(package_map_file).get("workspace_root") or manifest_dir
+        except Exception as e:
+            logger.warning(f"Failed to read manifest anchor from {package_map_file}: {e}")
+            return manifest_dir
+
     def _get_system_list(self, deploy_config: DeploymentConfig) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
         system_list: list[str] = []
         package_paths: Dict[str, str] = {}
@@ -157,6 +174,8 @@ class Deployment:
         manifest_dir = deploy_config.manifest_dir
         if not os.path.isdir(manifest_dir):
             raise ValidationError(f"System design manifest directory not found or not a directory: {manifest_dir}")
+
+        anchor = self._read_manifest_anchor(manifest_dir)
 
         for entry in sorted(os.listdir(manifest_dir)):
             if not entry.endswith(".yaml"):
@@ -167,7 +186,12 @@ class Deployment:
 
                 # Load package map if available
                 if "package_map" in manifest_yaml:
-                    package_paths.update(manifest_yaml["package_map"])
+                    package_paths.update(
+                        {
+                            name: _resolve_manifest_path(path, anchor)
+                            for name, path in manifest_yaml["package_map"].items()
+                        }
+                    )
 
                 files = manifest_yaml.get("deploy_config_files")
                 # Allow the field to be empty or null without raising an error
@@ -182,6 +206,8 @@ class Deployment:
                     continue
                 for f in files:
                     file_path = f.get("path") if isinstance(f, dict) else None
+                    if file_path:
+                        file_path = _resolve_manifest_path(file_path, anchor)
                     if file_path and file_path not in system_list:
                         system_list.append(file_path)
 

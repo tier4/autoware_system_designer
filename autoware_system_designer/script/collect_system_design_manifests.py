@@ -63,6 +63,11 @@ def is_target_design_file(filename):
     return infer_type(filename) != "unknown"
 
 
+def to_manifest_path(path, anchor):
+    """Manifest paths are anchor-relative when an anchor is set, absolute otherwise."""
+    return os.path.relpath(path, anchor) if anchor else path
+
+
 def find_source_root(start_path):
     """
     Find the workspace source root directory by traversing up from start_path.
@@ -115,7 +120,17 @@ def main():
             "'source' uses workspace source package directories (CI/no-build mode)."
         ),
     )
+    parser.add_argument(
+        "--anchor",
+        default=None,
+        help=(
+            "Base directory that manifest paths are written relative to, recorded as "
+            "'workspace_root' in _package_map.yaml. Absolute paths are written when omitted."
+        ),
+    )
     args = parser.parse_args()
+
+    anchor = os.path.abspath(args.anchor) if args.anchor else None
 
     # Find workspace root
     workspace_root = find_source_root(args.start_path)
@@ -215,11 +230,14 @@ def main():
         else:
             # merged: install_prefix/share/pkg_name
             p = os.path.join(args.install_prefix, "share", pkg_name)
-        package_map[pkg_name] = p
+        package_map[pkg_name] = to_manifest_path(p, anchor)
 
     package_map_path = os.path.join(output_dir, "_package_map.yaml")
+    package_map_data = {"package_map": package_map}
+    if anchor:
+        package_map_data["workspace_root"] = anchor
     with open(package_map_path, "w") as f:
-        yaml.dump({"package_map": package_map}, f)
+        yaml.dump(package_map_data, f)
         print(f"Generated {package_map_path} with {len(package_map)} packages")
 
     # 2. Generate individual manifests for packages with design files
@@ -238,7 +256,7 @@ def main():
             t = infer_type(os.path.basename(f))
             if t == "unknown":
                 continue
-            data["deploy_config_files"].append({"path": f, "type": t})
+            data["deploy_config_files"].append({"path": to_manifest_path(f, anchor), "type": t})
 
         with open(manifest_path, "w") as f:
             yaml.dump(data, f)

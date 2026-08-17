@@ -17,6 +17,9 @@ install(
   USE_SOURCE_PERMISSIONS
 )
 
+# Anchor that manifest paths are written relative to; colcon lays out build/ and install/ as its siblings.
+get_filename_component(SYSTEM_DESIGN_MANIFEST_ANCHOR "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
+
 # Collect system descriptions at install time.
 # ${CMAKE_CURRENT_SOURCE_DIR} and ${Python3_EXECUTABLE} are expanded at configure time;
 install(CODE "
@@ -31,6 +34,7 @@ install(CODE "
       \"${CMAKE_CURRENT_SOURCE_DIR}\"
       \"\${_dest_prefix}/share/${PROJECT_NAME}/resource\"
       \"\${CMAKE_INSTALL_PREFIX}\"
+      --anchor \"${SYSTEM_DESIGN_MANIFEST_ANCHOR}\"
     COMMAND_ERROR_IS_FATAL ANY
   )
 ")
