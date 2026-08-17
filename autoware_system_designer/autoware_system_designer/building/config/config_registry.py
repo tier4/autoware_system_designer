@@ -38,6 +38,7 @@ from ...parsing.config import (
 from ...parsing.loaders.data_parser import ConfigParser
 from ...parsing.loaders.data_validator import entity_name_decode
 from ...utils.format_version import check_format_version
+from ...utils.path_utils import canonical_path
 from ..resolution.variant_resolver import (
     ModuleVariantResolver,
     NodeVariantResolver,
@@ -93,7 +94,7 @@ class SelectionPolicy:
         tier = 0 if self.preferred_package and config.package == self.preferred_package else 1
         if self.anchor_dir is None:
             return tier, _UNRANKED
-        return tier, _path_distance(self.anchor_dir, Path(config.file_path))
+        return tier, _path_distance(self.anchor_dir, Path(canonical_path(str(config.file_path))))
 
 
 @dataclass
@@ -113,6 +114,11 @@ class EntityGroup:
     @property
     def used(self) -> bool:
         return self._selected is not None
+
+    @property
+    def selected(self) -> Optional[Config]:
+        """Memoized selection; None until the group is resolved."""
+        return self._selected
 
     def choose(self, policy: SelectionPolicy) -> Config:
         """Best candidate under *policy*, load order breaking ties. Leaves the group unused."""
@@ -190,7 +196,7 @@ class ConfigRegistry:
     def selection_policy(self) -> SelectionPolicy:
         """Current ranking inputs for duplicated names."""
         return SelectionPolicy(
-            anchor_dir=Path(self.anchor_dir) if self.anchor_dir else None,
+            anchor_dir=Path(canonical_path(self.anchor_dir)) if self.anchor_dir else None,
             preferred_package=self.deployment_package_name,
         )
 
@@ -258,16 +264,11 @@ class ConfigRegistry:
                     raise type(e)(f"{e}\n{hint}") from e
                 raise
 
-    def get(self, name: str, default=None) -> Optional[Config]:
-        """Get entity by name with default value."""
-        group = self.entities.get(name)
-        return group.choose(self.selection_policy) if group else default
-
-    def iter_configs(self) -> Iterator[Config]:
-        """One config per known name, without marking any group used."""
-        policy = self.selection_policy
+    def iter_used_configs(self) -> Iterator[Config]:
+        """The memoized selection of every group this deployment resolved."""
         for group in self.entities.values():
-            yield group.choose(policy)
+            if group.selected is not None:
+                yield group.selected
 
     def all_duplicates(self) -> List[EntityGroup]:
         """Every duplicated name in the scan, whether the deployment reaches it or not."""
@@ -279,11 +280,14 @@ class ConfigRegistry:
 
     def _log_duplicate_scan(self) -> None:
         """Workspace-wide collision summary; the deployment-relevant subset is reported on use."""
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
         duplicates = self.all_duplicates()
         if not duplicates:
             return
         logger.debug(
-            f"{len(duplicates)} duplicated entity name(s) in the scan:\n" + format_duplicate_report(duplicates)
+            f"{len(duplicates)} duplicated entity name(s) in the scan; candidates in load order:\n"
+            + format_duplicate_report(duplicates)
         )
 
     def _report_duplicate(self, group: EntityGroup, chosen: Config) -> None:
@@ -293,6 +297,22 @@ class ConfigRegistry:
             f"'->' marks the definition in use:\n{group.describe()}"
         )
         logger.warning(f"{message}{format_source(source_from_config(chosen, '/name'))}")
+
+    def _find_group(self, name: str, config_type: str) -> Optional[EntityGroup]:
+        """Group registered under name.config_type; the name may already carry the type suffix."""
+        group = self.entities.get(f"{name}.{config_type}")
+        if group is None and "." in name:
+            try:
+                decoded_name, entity_type = entity_name_decode(name)
+                if entity_type == config_type:
+                    group = self.entities.get(f"{decoded_name}.{config_type}")
+            except ValidationError:
+                pass
+        return group
+
+    def system_group(self, name: str) -> Optional[EntityGroup]:
+        """Candidate group for a system name; reading it leaves the group unused."""
+        return self._find_group(name, ConfigType.SYSTEM)
 
     def _get_entity_with_base(
         self,
@@ -305,16 +325,7 @@ class ConfigRegistry:
         """
         Generic method to get an entity and resolve base/variant if applicable.
         """
-        group = self.entities.get(f"{name}.{config_type}")
-
-        # If not found, the caller may already have passed a full_name (e.g. MyNode.node)
-        if group is None and "." in name:
-            try:
-                decoded_name, entity_type = entity_name_decode(name)
-                if entity_type == config_type:
-                    group = self.entities.get(f"{decoded_name}.{config_type}")
-            except ValidationError:
-                pass
+        group = self._find_group(name, config_type)
 
         if group is None:
             available = [g.name for g in self.entities.values() if g.entity_type == config_type]

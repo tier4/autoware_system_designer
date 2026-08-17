@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from ..utils.env import env_flag
 from ..utils.logging_utils import configure_split_stream_logging
 
 
@@ -29,7 +30,7 @@ class DeploymentConfig:
     layer_limit: int = 50
     log_level: str = "INFO"
     print_level: str = "ERROR"
-    cache_enabled: bool = False
+    cache_enabled: bool = True
     max_cache_size: int = 128
     # Tolerated-in-general-workspace conditions are fatal when set.
     strict: bool = False
@@ -39,8 +40,8 @@ class DeploymentConfig:
     manifest_dir: str = ""
     output_root_dir: str = "build"
     workspace_config: Optional[List[Dict[str, Any]]] = None
-    # Directory duplicated entity candidates are ranked by proximity to. None when the
-    # deployment target is a bare entity name rather than a path.
+    # Directory duplicated entity candidates are ranked by proximity to; None for
+    # bare-entity-name targets.
     anchor_dir: Optional[str] = None
 
     @classmethod
@@ -50,9 +51,9 @@ class DeploymentConfig:
             layer_limit=int(os.getenv("AUTOWARE_SYSTEM_DESIGNER_LAYER_LIMIT", "50")),
             log_level=os.getenv("AUTOWARE_SYSTEM_DESIGNER_LOG_LEVEL", "INFO"),
             print_level=os.getenv("AUTOWARE_SYSTEM_DESIGNER_PRINT_LEVEL", "ERROR"),
-            cache_enabled=os.getenv("AUTOWARE_SYSTEM_DESIGNER_CACHE_ENABLED", "true").lower() == "true",
+            cache_enabled=env_flag("AUTOWARE_SYSTEM_DESIGNER_CACHE_ENABLED", True),
             max_cache_size=int(os.getenv("AUTOWARE_SYSTEM_DESIGNER_MAX_CACHE_SIZE", "128")),
-            strict=os.getenv("AUTOWARE_SYSTEM_DESIGNER_STRICT", "0").lower() in ("1", "on", "true"),
+            strict=env_flag("AUTOWARE_SYSTEM_DESIGNER_STRICT", False),
         )
 
     def set_logging(self) -> logging.Logger:

@@ -26,7 +26,7 @@ def find_packages(root_dir):
         if "package.xml" in filenames:
             name = get_package_name(dirpath)
             if name:
-                packages[os.path.abspath(dirpath)] = name
+                packages[os.path.realpath(dirpath)] = name
             # Optimization: don't traverse inside packages unless they are metapackages?
             # ROS 2 packages usually don't nest.
             # But let's be safe and traverse.
@@ -64,8 +64,20 @@ def is_target_design_file(filename):
 
 
 def to_manifest_path(path, anchor):
-    """Manifest paths are anchor-relative when an anchor is set, absolute otherwise."""
-    return os.path.relpath(path, anchor) if anchor else path
+    """Manifest entry for a path: anchor-relative when inside the anchor, absolute otherwise.
+
+    Inverse of autoware_system_designer.utils.path_utils.resolve_manifest_path; kept local so
+    the collector runs stdlib-only at install time.
+    """
+    if not anchor:
+        return path
+    try:
+        rel = os.path.relpath(path, anchor)
+    except ValueError:
+        return path
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return path
+    return rel
 
 
 def find_source_root(start_path):
@@ -130,7 +142,7 @@ def main():
     )
     args = parser.parse_args()
 
-    anchor = os.path.abspath(args.anchor) if args.anchor else None
+    anchor = os.path.realpath(args.anchor) if args.anchor else None
 
     # Find workspace root
     workspace_root = find_source_root(args.start_path)
@@ -166,7 +178,7 @@ def main():
     yaml_parse_errors = []
 
     for yaml_file in yaml_files:
-        yaml_file_abs = os.path.abspath(yaml_file)
+        yaml_file_abs = os.path.realpath(yaml_file)
 
         if not is_target_design_file(os.path.basename(yaml_file_abs)):
             continue

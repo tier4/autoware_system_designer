@@ -92,20 +92,25 @@ def build(deployment_file: str, manifest_dir: str, output_root_dir: str, workspa
         update_index(output_root_dir)
 
         logger.info("Autoware System Designer: Done!")
-    except Exception:
-        # Surface minor-version mismatch warnings when the build fails.
-        # The Deployment / ConfigRegistry layers may have already appended
-        # the hint to the exception message, but if the failure happened
-        # before a Deployment was fully constructed we still have the
-        # registry to check.
-        _emit_minor_version_hint(deployment)
-        _emit_duplicate_hint(deployment)
+    except Exception as exc:
+        # Construction failures carry the registry on the exception; hints
+        # surface duplicate and minor-version context alongside the error.
+        _emit_minor_version_hint(deployment, exc)
+        _emit_duplicate_hint(deployment, exc)
         raise
 
 
-def _emit_duplicate_hint(deployment):
+def _find_registry(deployment, exc):
+    """Registry attached to the exception, or the deployment's when construction completed."""
+    registry = getattr(exc, "config_registry", None)
+    if registry is not None:
+        return registry
+    return getattr(deployment, "config_registry", None) if deployment else None
+
+
+def _emit_duplicate_hint(deployment, exc):
     """Log the duplicated names the deployment reached, if any."""
-    registry = getattr(deployment, "config_registry", None) if deployment else None
+    registry = _find_registry(deployment, exc)
     if registry is None:
         return
     duplicates = registry.used_duplicates()
@@ -113,17 +118,15 @@ def _emit_duplicate_hint(deployment):
         return
     from autoware_system_designer.building.config.config_registry import format_duplicate_report
 
-    _logger.warning(
+    _logger.error(
         f"Note: {len(duplicates)} duplicated entity name(s) are used by this deployment. "
         f"This may have contributed to the error:\n" + format_duplicate_report(duplicates)
     )
 
 
-def _emit_minor_version_hint(deployment):
+def _emit_minor_version_hint(deployment, exc):
     """Log minor-version mismatch files if any were recorded."""
-    if deployment is None:
-        return
-    registry = getattr(deployment, "config_registry", None)
+    registry = _find_registry(deployment, exc)
     if registry is None:
         return
     files = getattr(registry, "minor_version_mismatch_files", [])
@@ -131,7 +134,7 @@ def _emit_minor_version_hint(deployment):
         return
     from autoware_system_designer.building.config.config_registry import _format_mismatch_hint
 
-    _logger.warning(_format_mismatch_hint(files))
+    _logger.error(_format_mismatch_hint(files))
 
 
 if __name__ == "__main__":
