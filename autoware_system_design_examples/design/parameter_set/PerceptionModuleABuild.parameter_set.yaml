@@ -2,10 +2,11 @@ autoware_system_design_format: 0.4.0
 
 name: PerceptionModuleABuild.parameter_set
 
-description: Parameter set for building the perception module A.
+description: Build pass for perception module A - runs the detector_a1 detector node with build_only enabled to prebuild the model engine.
 
 parameters:
   - node: /perception/object_recognition/detector_a1/node_detector
+    description: Enable build-only mode on the detector node.
     param_values:
       - name: build_only
         type: bool
