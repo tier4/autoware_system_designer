@@ -25,6 +25,22 @@
       "type": "object",
       "additionalProperties": true
     },
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
     "variables": {
       "type": "array",
       "items": {
@@ -36,6 +52,9 @@
           },
           "value": {
             "type": ["string", "number", "boolean", "array"]
+          },
+          "description": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -51,6 +70,9 @@
             "type": "string"
           },
           "value": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           }
         },
@@ -116,6 +138,9 @@
           "arguments": {
             "type": "object",
             "additionalProperties": true
+          },
+          "description": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -179,13 +204,28 @@
           "topic": {
             "type": "string",
             "description": "Absolute ROS topic name (e.g. /api/autoware/get/engage)"
+          },
+          "description": {
+            "type": "string"
           }
         },
         "additionalProperties": false
       }
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": {
+    "description": "Mode-specific override section keyed by mode name",
+    "type": "object",
+    "properties": {
+      "override": {
+        "type": "object"
+      },
+      "remove": {
+        "type": "object"
+      }
+    },
+    "additionalProperties": false
+  },
   "if": {
     "not": {
       "required": ["base"]

@@ -256,6 +256,9 @@
           "name": {
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
           "trigger_conditions": {
             "type": "array"
           },

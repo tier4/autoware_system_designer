@@ -14,7 +14,7 @@ from ..launch_parser import NodeRecord
 from ..namespace_tree import NamespaceNode
 from ..port_utils import shorten_port_names
 
-DESIGN_FORMAT = "0.3.1"
+DESIGN_FORMAT = "0.4.0"
 
 
 def _build_instance_name_map(nodes: list[NodeRecord]) -> dict[str, str]:
