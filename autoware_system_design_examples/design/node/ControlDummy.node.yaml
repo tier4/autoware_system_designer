@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: ControlDummy.node
+
+description: Dummy control node that generates vehicle control, gear, hazard-light and turn-indicator commands from the planned route.
 
 package:
   name: autoware_system_dummy_modules

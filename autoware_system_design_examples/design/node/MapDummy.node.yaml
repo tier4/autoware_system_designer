@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: MapDummy.node
+
+description: Dummy map node that publishes the vector and point cloud maps and serves partial/differential point cloud map requests.
 
 package:
   name: autoware_system_dummy_modules

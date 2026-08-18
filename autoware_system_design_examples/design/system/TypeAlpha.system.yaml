@@ -1,9 +1,12 @@
-autoware_system_design_format: 0.3.1
+autoware_system_design_format: 0.4.0
 
 name: TypeAlpha.system
 
+description: Demo system Type Alpha - dummy sensing, map, localization, perception and planning components spread over main_ecu and dummy ECUs, with a simulation mode that swaps the perception module.
+
 variables:
   - name: vehicle_id
+    description: Identifier of the target vehicle, set by the deployment.
   - name: data_path
   - name: lanelet2_map_file
   - name: pointcloud_map_file
@@ -30,6 +33,7 @@ components:
     compute_unit: dummy_ecu_1
   - name: object_recognition
     entity: PerceptionA.module
+    description: LiDAR object recognition pipeline.
     path: /perception/object_recognition
     compute_unit: main_ecu
     parameter_set: [PerceptionModuleA.parameter_set]

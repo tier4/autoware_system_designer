@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: CameraDummy.module
+
+description: Camera sensing module - eight camera driver instances exposing per-camera image and camera_info outputs.
 
 instances:
   - name: camera_0

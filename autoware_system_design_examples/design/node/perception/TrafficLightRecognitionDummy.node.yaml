@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: TrafficLightRecognitionDummy.node
+
+description: Dummy traffic light recognition node that publishes car/pedestrian traffic signals and detection ROIs.
 
 package:
   name: autoware_system_dummy_modules

@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: LidarDummy.module
+
+description: LiDAR sensing module - four LiDAR driver instances plus a concatenation node, exposing both individual and concatenated point clouds.
 
 instances:
   - name: lidar_top

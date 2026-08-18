@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: FilterA.node
+
+description: Dummy object filter that uses the vector map to constrain incoming detected objects.
 
 package:
   name: autoware_perception_dummy_nodes

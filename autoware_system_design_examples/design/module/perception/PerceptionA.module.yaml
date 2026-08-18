@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: PerceptionA.module
+
+description: Perception pipeline variant A - two DetectorA modules feeding a tracker and predictor to produce predicted objects.
 
 instances:
   - name: detector_a1
@@ -9,6 +11,7 @@ instances:
     entity: DetectorA.module
   - name: node_tracker
     entity: Tracker.node
+    description: Fuses detections from both detectors into tracked objects.
   - name: node_predictor
     entity: Predictor.node
 
@@ -17,6 +20,7 @@ subscribers:
   - name: pointcloud
 publishers:
   - name: objects
+    description: Predicted objects for planning.
 
 connections:
   - - subscriber.pointcloud

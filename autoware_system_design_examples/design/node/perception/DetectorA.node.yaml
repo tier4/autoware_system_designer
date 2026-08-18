@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: DetectorA.node
+
+description: Dummy ML-based detector that produces detected objects from an input point cloud.
 
 package:
   name: autoware_perception_dummy_nodes
@@ -44,6 +46,7 @@ param_values:
 # processes
 processes:
   - name: detector
+    description: Runs detection on each input point cloud.
     trigger_conditions:
       - or:
           - on_input: pointcloud

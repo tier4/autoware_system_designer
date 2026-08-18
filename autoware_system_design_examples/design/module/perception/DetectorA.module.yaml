@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: DetectorA.module
+
+description: Detector A module combining a detector node and a map-based filter node into a single object-detection unit.
 
 instances:
   - name: node_detector

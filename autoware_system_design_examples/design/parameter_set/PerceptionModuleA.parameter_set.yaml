@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: PerceptionModuleA.parameter_set
+
+description: Parameter set binding param files and values for the nodes of the PerceptionA perception module.
 
 parameters:
   - node: /perception/object_recognition/detector_a1/node_detector

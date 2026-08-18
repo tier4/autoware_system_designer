@@ -29,6 +29,7 @@ Represents a single ROS 2 node.
 
 - `autoware_system_design_format`: Must be a version up to the supported `DESIGN_FORMAT_VERSION`.
 - `name`: Must match filename (e.g., `MyNode.node`).
+- `description`: (Optional) Brief explanation of the node's role.
 - `package`: Dictionary defining the ROS 2 package information.
   - `name`: ROS 2 package name.
   - `provider`: Provider of the package (e.g., `dummy`, `tier4`, `autoware`).
@@ -39,6 +40,7 @@ Represents a single ROS 2 node.
   - `node_output`: (Optional) `screen`, `log`, etc.
 - `subscribers`: List of input ports (subscribers).
   - `name`: Port name. Can include slashes (e.g., `perception/objects`).
+  - `description`: (Optional) Brief explanation of the port.
   - `message_type`: Full ROS message type (e.g., `sensor_msgs/msg/PointCloud2`).
   - `remap_target`: (Optional) The internal ROS 2 topic name used by the node.
     - **Default**: If not provided, it defaults to `~/input/<name>`.
@@ -47,6 +49,7 @@ Represents a single ROS 2 node.
   - `qos`: (Optional) QoS settings (`reliability`, `durability`, etc.).
 - `publishers`: List of output ports (publishers).
   - `name`: Port name. Can include slashes.
+  - `description`: (Optional) Brief explanation of the port.
   - `message_type`: Full ROS message type.
   - `qos`: (Optional) QoS settings (`reliability`, `durability`, etc.).
   - `remap_target`: (Optional) The internal ROS 2 topic name used by the node.
@@ -55,18 +58,21 @@ Represents a single ROS 2 node.
   - `global`: (Optional) If set, the output topic is published to a global topic name (e.g., `/tf`).
 - `servers`: (Optional) List of service/action servers.
   - `name`: Server name.
+  - `description`: (Optional) Brief explanation of the server.
   - `message_type`: Full ROS service or action type (e.g., `std_srvs/srv/SetBool` or `example_interfaces/action/Fibonacci`).
   - `global`: (Optional) If set, the server uses a global topic name.
   - `qos`: (Optional) QoS settings.
   - `remap_target`: (Optional) The internal ROS 2 service/action name used by the node.
 - `clients`: (Optional) List of service/action clients.
   - `name`: Client name.
+  - `description`: (Optional) Brief explanation of the client.
   - `message_type`: Full ROS service or action type (e.g., `std_srvs/srv/SetBool` or `example_interfaces/action/Fibonacci`).
   - `global`: (Optional) If set, the client uses a global topic name.
   - `qos`: (Optional) QoS settings.
   - `remap_target`: (Optional) The internal ROS 2 service/action name used by the node.
 - `param_files`: List of parameter file references. Can be an empty list `[]`.
   - `name`: Identifier for the file reference.
+  - `description`: (Optional) Brief explanation of the file reference.
   - `default`: Path to file (use `$(find-pkg-share pkg)/path` or relative path).
   - `schema`: (Optional) Path to JSON schema.
   - `allow_substs`: (Optional) `true`/`false` to allow substitution in parameter files.
@@ -77,6 +83,7 @@ Represents a single ROS 2 node.
   - `description`: (Optional) Brief explanation of the parameter.
 - `processes`: Execution logic / Event chains.
   - `name`: Name of the process/callback.
+  - `description`: (Optional) Brief explanation of the process.
   - `trigger_conditions`: Logic to start process. Can be nested with `or`/`and`.
     - `on_input`: Triggered by input port (`on_input: port_name`).
     - `on_trigger`: Triggered by another process (`on_trigger: process_name`).
@@ -95,19 +102,25 @@ Represents a composite component containing nodes or other modules.
 
 - `autoware_system_design_format`: Must be a version up to the supported `DESIGN_FORMAT_VERSION`.
 - `name`: Must match filename (e.g., `MyModule.module`).
+- `description`: (Optional) Brief explanation of the module's role.
 - `instances`: List of internal entities.
   - `name`: Local name for the instance (e.g., `lidar_driver`).
   - `entity`: Reference to the entity definition (e.g., `LidarDriver.node`).
+  - `description`: (Optional) Brief explanation of the instance.
   - `launch`: (Optional) Override launch configurations for this instance.
 - `subscribers`: List of externally accessible input ports.
   - `name`: Port name.
+  - `description`: (Optional) Brief explanation of the port.
 - `publishers`: List of externally accessible output ports.
   - `name`: Port name.
+  - `description`: (Optional) Brief explanation of the port.
 - `servers`: (Optional) List of externally accessible service/action servers.
   - `name`: Server name.
+  - `description`: (Optional) Brief explanation of the server.
 - `clients`: (Optional) List of externally accessible service/action clients.
   - `name`: Client name.
-- `connections`: Internal wiring. List of connection pairs, where each connection is a list of two port paths. Supports wildcards (e.g., `subscriber.*` or `node.publisher.*`).
+  - `description`: (Optional) Brief explanation of the client.
+- `connections`: Internal wiring. List of connection pairs, where each connection is a list of two port paths. Supports wildcards (e.g., `subscriber.*` or `node.publisher.*`). Connection entries do not take a `description`.
 
 **Connection Syntax:**
 
@@ -164,14 +177,18 @@ Top-level entry point defining the complete system.
 
 - `autoware_system_design_format`: Must be a version up to the supported `DESIGN_FORMAT_VERSION`.
 - `name`: Must match filename (e.g., `MyCar.system`).
+- `description`: (Optional) Brief explanation of the system.
 - `arguments`: (Optional) List of system arguments.
   - `name`: Argument name.
+  - `description`: (Optional) Brief explanation of the argument.
 - `variables`: List of system variables.
   - `name`: Variable name.
   - `value`: Variable value (supports `$(find-pkg-share pkg)` and `$(env VAR)` substitutions).
+  - `description`: (Optional) Brief explanation of the variable.
 - `variable_files`: (Optional) List of variable file references.
   - `name`: Variable file identifier.
   - `value`: Path to variable file.
+  - `description`: (Optional) Brief explanation of the file reference.
 - `modes`: List of operation modes.
   - `name`: Mode name (e.g., `Runtime`, `LoggingSimulation`).
   - `description`: (Optional) Description of the mode.
@@ -180,6 +197,7 @@ Top-level entry point defining the complete system.
 - `components`: Top-level instances.
   - `name`: Name of the component instance.
   - `entity`: Reference to module/node (e.g., `SensingModule.module`).
+  - `description`: (Optional) Brief explanation of the component.
   - `namespace`: ROS namespace prefix.
   - `compute_unit`: Hardware resource identifier (e.g., `main_ecu`).
   - `parameter_set`: (Optional) Parameter set file name(s) to apply. Can be a string or an array of strings.
@@ -187,7 +205,7 @@ Top-level entry point defining the complete system.
   - `name`: Unique group name. It will be used as the component name for the container.
   - `type`: Node group execution type. select `ros2_component_container_mt` or `ros2_component_container`.
   - `nodes`: List of non-empty path patterns. Glob patterns (`*`, `?`, `[...]`) match the full node path.
-- `connections`: Top-level wiring between components. List of connection pairs, where each connection is a list of two port paths. Supports wildcards (e.g., `component.publisher.^` for wildcard).
+- `connections`: Top-level wiring between components. List of connection pairs, where each connection is a list of two port paths. Supports wildcards (e.g., `component.publisher.^` for wildcard). Connection entries do not take a `description`.
 
 **Mode-Specific Overrides:**
 Each mode can define overrides using the mode name as a key:
@@ -202,8 +220,10 @@ Overrides parameters for specific nodes within the system hierarchy.
 
 - `autoware_system_design_format`: Must be a version up to the supported `DESIGN_FORMAT_VERSION`.
 - `name`: Must match filename.
+- `description`: (Optional) Brief explanation of the parameter set.
 - `parameters`: List of overrides.
   - `node`: Full hierarchical path to the node instance (e.g., `/perception/object_recognition/detector_a1/node_detector`).
+  - `description`: (Optional) Brief explanation of the override entry.
   - `param_files`: List of dictionaries mapping parameter file keys to new paths.
     - Format: `- <key>: <path>` (e.g., `- model_param_path: path/to/file.yaml`).
   - `param_values`: List of individual parameter value overrides.
@@ -270,11 +290,12 @@ Removals are applied **before** overrides to ensure removed items don't interfer
 
 ## 7. Examples
 
-### Node Example (0.3.0)
+### Node Example (0.4.0)
 
 ```yaml
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 name: Detector.node
+description: Camera-based object detector.
 package:
   name: my_perception
   provider: tier4
@@ -290,6 +311,7 @@ subscribers:
     global: /tf
 publishers:
   - name: objects
+    description: Detected objects in the camera frame.
     message_type: autoware_perception_msgs/msg/DetectedObjects
     qos:
       reliability: reliable
@@ -306,10 +328,10 @@ processes:
       - to_output: objects
 ```
 
-### Module Example (0.3.0)
+### Module Example (0.4.0)
 
 ```yaml
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 name: DetectorA.module
 instances:
   - name: node_detector
@@ -332,10 +354,10 @@ connections:
     - publisher.*
 ```
 
-### System Example (0.3.0)
+### System Example (0.4.0)
 
 ```yaml
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 name: AutowareSample.system
 variables:
   - name: config_path
@@ -381,10 +403,10 @@ LoggingSimulation:
           - /sensing
 ```
 
-### Parameter Set Example (0.3.0)
+### Parameter Set Example (0.4.0)
 
 ```yaml
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 name: PerceptionModuleA.parameter_set
 parameters:
   - node: /perception/object_recognition/detector_a1/node_detector

@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: TrafficLightRecognitionDummy.module
+
+description: Traffic light recognition module wrapping the classification node and exposing car/pedestrian traffic-signal and detection ROI outputs.
 
 instances:
   - name: classification

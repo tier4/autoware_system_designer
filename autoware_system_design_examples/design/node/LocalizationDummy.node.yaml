@@ -1,6 +1,8 @@
-autoware_system_design_format: 0.3.0
+autoware_system_design_format: 0.4.0
 
 name: LocalizationDummy.node
+
+description: Dummy localization node that fuses sensor inputs to publish pose, TF, acceleration and kinematic state.
 
 package:
   name: autoware_system_dummy_modules
