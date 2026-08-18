@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
+import yaml
+
 STRING_TYPES = {"string", "str"}
 BOOL_TYPES = {"bool", "boolean"}
 INTEGER_TYPES = {
@@ -82,3 +84,23 @@ def coerce_numeric_value(value: Any, type_name: Optional[str]) -> Any:
         return float(dec)
 
     raise ValueError(f"Invalid numeric value '{value}' for type '{type_name}'")
+
+
+def to_launch_param_attr(value: Any) -> str:
+    """Serialize a parameter value for a launch XML ``value`` attribute.
+
+    The XML frontend re-parses the attribute as YAML: a bare string that reads
+    back as YAML null (``null``, ``~``, empty) is single-quoted so it stays a
+    string; lists are emitted as YAML flow sequences.
+    """
+    if isinstance(value, (list, tuple)):
+        return yaml.safe_dump(list(value), default_flow_style=True, width=1_000_000_000).strip()
+    if isinstance(value, str):
+        try:
+            reparsed = yaml.safe_load(value)
+        except yaml.YAMLError:
+            reparsed = value
+        if reparsed is None:
+            return "'" + value.replace("'", "''") + "'"
+        return value
+    return str(value)

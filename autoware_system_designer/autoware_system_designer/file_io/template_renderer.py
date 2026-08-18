@@ -7,6 +7,8 @@ import os
 
 from jinja2 import Environment, FileSystemLoader
 
+from ..utils.parameter_types import to_launch_param_attr
+
 
 def _get_template_directories() -> list[str]:
     """Resolve template search paths.
@@ -80,6 +82,7 @@ class TemplateRenderer:
             autoescape=False,
         )
         self.env.filters["tojson"] = json.dumps
+        self.env.filters["launch_param_attr"] = to_launch_param_attr
 
     def render_template(self, template_name: str, **kwargs) -> str:
         template = self.env.get_template(template_name)
