@@ -132,22 +132,30 @@ macro(autoware_system_designer_build_deploy project_name)
     )
   endif()
 
+  # The manifest tree is shared by every deploy target of the package and collected once per build.
+  set(_COLLECT_TARGET collect_system_design_manifests_${project_name})
+  if(NOT TARGET ${_COLLECT_TARGET})
+    add_custom_target(${_COLLECT_TARGET} ALL
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${LOG_DIR}
+      COMMAND ${CMAKE_COMMAND} -E rm -rf ${SYSTEM_DESIGNER_RESOURCE_DIR}
+      COMMAND ${Python3_EXECUTABLE} ${SYSTEM_DESIGNER_RUNNER_SCRIPT} run
+        --log-file ${LOG_DIR}/collect_system_design_manifests.log --
+        ${Python3_EXECUTABLE} ${COLLECT_MANIFESTS_SCRIPT}
+          ${CMAKE_SOURCE_DIR}
+          ${SYSTEM_DESIGNER_RESOURCE_DIR}
+          ${CMAKE_INSTALL_PREFIX}
+          --anchor ${_MANIFEST_ANCHOR}
+      COMMENT "Collecting system design manifests; full log: ${LOG_DIR}/collect_system_design_manifests.log"
+    )
+  endif()
+
   add_custom_target(run_build_py_${_INPUT_NAME} ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${LOG_DIR}
-    COMMAND ${CMAKE_COMMAND} -E rm -rf ${SYSTEM_DESIGNER_RESOURCE_DIR}
-    COMMAND ${Python3_EXECUTABLE} ${SYSTEM_DESIGNER_RUNNER_SCRIPT} run --log-file ${LOG_FILE} --
-      ${Python3_EXECUTABLE} ${COLLECT_MANIFESTS_SCRIPT}
-        ${CMAKE_SOURCE_DIR}
-        ${SYSTEM_DESIGNER_RESOURCE_DIR}
-        ${CMAKE_INSTALL_PREFIX}
-        --anchor ${_MANIFEST_ANCHOR}
     COMMAND ${CMAKE_COMMAND} -E env
       ${_AWSD_PYTHONPATH_ARGS}
       AUTOWARE_SYSTEM_DESIGNER_BUILD_DEPLOY_STRICT=${AUTOWARE_SYSTEM_DESIGNER_BUILD_DEPLOY_STRICT}
       ${Python3_EXECUTABLE} ${SYSTEM_DESIGNER_RUNNER_SCRIPT}
         deploy
         --log-file ${LOG_FILE}
-        --append
         --print-level ${_PRINT_LEVEL}
         --strict ${_STRICT_MODE_CLI}
         ${BUILD_PY_SCRIPT}
@@ -157,5 +165,6 @@ macro(autoware_system_designer_build_deploy project_name)
         ${_WORKSPACE_ARGS}
     COMMENT "Running build.py script ${_LOG_DESC}. PRINT_LEVEL=${_PRINT_LEVEL}, STRICT=${_STRICT_MODE} (env default=${AUTOWARE_SYSTEM_DESIGNER_BUILD_DEPLOY_STRICT}); full log: ${LOG_FILE}"
   )
+  add_dependencies(run_build_py_${_INPUT_NAME} ${_COLLECT_TARGET})
   add_dependencies(${project_name} run_build_py_${_INPUT_NAME})
 endmacro()
