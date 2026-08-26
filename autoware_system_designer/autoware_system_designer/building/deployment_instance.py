@@ -19,6 +19,7 @@ from ..exceptions import ValidationError
 from ..parsing.config import SystemConfig
 from .instances.instance_tree import set_instances
 from .instances.instances import Instance
+from .parameters.data_binding_applier import apply_data_bindings
 from .parameters.parameter_resolver import ParameterResolver
 from .runtime.namespace import Namespace
 
@@ -72,6 +73,12 @@ class DeploymentInstance(Instance):
 
             # Propagate parameter resolver to all instances in the tree (now that they exist)
             self.set_parameter_resolver(self.parameter_resolver)
+
+            # 1b. apply data bindings (bind resolved bundle references onto consumer nodes)
+            current_step = "data_bindings"
+            logger.info(f"Instance '{self.name}': applying data bindings")
+            apply_data_bindings(self, config_registry)
+            _snapshot("1b_data_bindings")
 
             # 2. set connections
             current_step = "connections"

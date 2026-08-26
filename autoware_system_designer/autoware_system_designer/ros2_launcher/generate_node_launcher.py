@@ -21,7 +21,7 @@ from ..building.runtime.execution import LaunchState
 from ..exceptions import ValidationError
 from ..file_io.template_renderer import TemplateRenderer
 from ..parsing.config import ConfigType, NodeConfig
-from ..parsing.loaders.data_parser import ConfigParser
+from ..parsing.loaders.config_parser import ConfigParser
 from ..utils import pascal_to_snake
 
 

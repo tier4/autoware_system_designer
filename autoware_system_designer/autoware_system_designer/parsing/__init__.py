@@ -19,6 +19,7 @@ from .config import (
     Config,
     ConfigSubType,
     ConfigType,
+    DataConfig,
     ModuleConfig,
     NodeConfig,
     ParameterSetConfig,
@@ -45,6 +46,7 @@ from .json_schema_loader import (
 from .loaders import (
     BaseValidator,
     ConfigParser,
+    DataValidator,
     ModuleValidator,
     NodeValidator,
     ParameterSetValidator,
@@ -67,6 +69,7 @@ __all__ = [
     "ModuleConfig",
     "ParameterSetConfig",
     "SystemConfig",
+    "DataConfig",
     # Domain types
     "ParameterType",
     "PortDefinition",
@@ -88,5 +91,6 @@ __all__ = [
     "ModuleValidator",
     "ParameterSetValidator",
     "SystemValidator",
+    "DataValidator",
     "ValidatorFactory",
 ]

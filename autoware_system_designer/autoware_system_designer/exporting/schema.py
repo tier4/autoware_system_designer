@@ -100,6 +100,18 @@ class LauncherData(TypedDict, total=False):
     param_files: List[LauncherParamFileData]
 
 
+class DataBindingData(TypedDict, total=False):
+    instance: str  # system data: instance name
+    entity: str  # data entity name
+    category: Optional[str]  # 'map' | 'calibration' | 'ml_model'
+    variant: Dict[str, Any]  # axis name -> concrete value
+    bundle_dir: str
+    version: Optional[str]  # version the bundle records, None when it records none
+    version_source: Optional[str]  # "<file>:<key path>" the version was read from
+    requires_version: Optional[str]  # the node's rendered requirement, None when it declares none
+    requires_paths: Optional[List[str]]  # manifest keys the node requires, None when it declares none
+
+
 class LinkData(TypedDict, total=False):
     unique_id: str
     from_port: PortData
@@ -129,6 +141,7 @@ class InstanceData(TypedDict, total=False):
     package: str
     parameter_files_all: List[ParameterFileData]
     launcher: LauncherData
+    data_bindings: List[DataBindingData]
 
 
 class SystemStructureMetadata(TypedDict, total=False):
