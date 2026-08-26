@@ -14,7 +14,7 @@
 
 from pathlib import Path
 
-from autoware_system_designer.building.config.config_registry import ConfigRegistry
+from autoware_system_designer.building.config.config_registry import ConfigRegistry, _package_distance
 from autoware_system_designer.deploy import Deployment
 
 
@@ -45,6 +45,39 @@ def test_symlinked_anchor_ranks_against_real_candidate_paths(duplicate_workspace
     registry = _registry(duplicate_workspace, anchor_dir=str(link / "pkg_b"))
     node = registry.get_node("Demo")
     assert str(node.file_path) == str(duplicate_workspace["files"]["node_b"])
+
+
+def _make_package(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "package.xml").write_text("<package><name>x</name></package>")
+    return root
+
+
+def test_package_distance_ignores_intra_package_layout(tmp_path):
+    pkg = _make_package(tmp_path / "src" / "launcher" / "pkg")
+    anchor = pkg / "design" / "system"
+    shallow = pkg / "design" / "a.node.yaml"
+    deep = pkg / "design" / "system" / "deep" / "er" / "b.node.yaml"
+    for path in (anchor, deep.parent):
+        path.mkdir(parents=True, exist_ok=True)
+    shallow.touch()
+    deep.touch()
+    assert _package_distance(anchor, shallow) == 0
+    assert _package_distance(anchor, deep) == 0
+
+
+def test_package_distance_follows_repository_layout(tmp_path):
+    anchor_pkg = _make_package(tmp_path / "src" / "launcher" / "autoware_launch" / "designs")
+    sibling = _make_package(tmp_path / "src" / "launcher" / "autoware_launch" / "other") / "design" / "x.node.yaml"
+    far = _make_package(tmp_path / "src" / "universe" / "autoware_universe" / "perception" / "pkg") / "x.node.yaml"
+    sibling.parent.mkdir(parents=True)
+    sibling.touch()
+    far.touch()
+    anchor = anchor_pkg / "design" / "system"
+    anchor.mkdir(parents=True)
+    assert _package_distance(anchor, sibling) == 2
+    assert _package_distance(anchor, far) == 7
+    assert _package_distance(anchor, sibling) < _package_distance(anchor, far)
 
 
 def test_iter_used_configs_yields_only_resolved_selections(duplicate_workspace):
