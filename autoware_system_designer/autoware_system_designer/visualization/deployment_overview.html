@@ -256,6 +256,7 @@
           "out_ports",
           "parameters",
           "topic",
+          "data_bindings",
         ];
 
         let hasInfo = false;
@@ -321,6 +322,29 @@
           html += `<div class="info-card">
                     <div class="info-title">Interface</div>
                     ${interfaceHtml}
+                </div>`;
+        }
+
+        // --- Data Block ---
+        const dataBindings = data.data_bindings || [];
+        if (dataBindings.length > 0) {
+          let dataHtml = "";
+          dataBindings.forEach((binding) => {
+            const variantText =
+              typeof binding.variant === "object" && binding.variant !== null
+                ? Object.entries(binding.variant)
+                    .map(([axis, value]) => `${axis}=${value}`)
+                    .join(", ")
+                : binding.variant || "";
+            dataHtml += `<div style="margin-bottom: 8px; font-size: 13px;">
+                        <div style="font-weight: 500; color: var(--text-primary);">${binding.entity || "Unnamed"} <span style="color: var(--text-muted); font-size: 11px;">[${binding.category || ""}]${binding.version ? ` ${binding.version}` : ""}</span></div>
+                        ${variantText ? `<div style="color: var(--text-muted); font-size: 11px; font-family: 'Consolas', monospace; margin-top: 1px;">${variantText}</div>` : ""}
+                    </div>`;
+          });
+
+          html += `<div class="info-card">
+                    <div class="info-title">Data</div>
+                    ${dataHtml}
                 </div>`;
         }
 
