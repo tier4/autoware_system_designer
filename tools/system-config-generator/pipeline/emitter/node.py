@@ -44,17 +44,23 @@ def _resolve(share: str, anchor: Path) -> str:
 
 
 def find_package_map() -> Optional[Path]:
-    """Locate _package_map.yaml via ament_index. Returns None if not found."""
-    try:
-        from ament_index_python.packages import get_package_share_path
+    """Locate _package_map.yaml in a colcon workspace build tree.
 
-        share = get_package_share_path("autoware_system_designer")
-        p = Path(share) / "resource" / "_package_map.yaml"
-        if p.exists():
-            return p
-    except Exception:
-        pass
-    return None
+    Each package that calls autoware_system_designer_build_deploy collects the manifests into
+    ``build/<pkg>/system_designer_resource``; the newest one found under the current workspace
+    (cwd or COLCON_PREFIX_PATH parent) is used. Returns None if none exists.
+    """
+    roots = []
+    prefix = os.environ.get("COLCON_PREFIX_PATH", "").split(os.pathsep)[0]
+    if prefix:
+        roots.append(Path(prefix).parent)
+    roots.append(Path.cwd())
+    candidates = []
+    for root in roots:
+        candidates.extend((root / "build").glob("*/system_designer_resource/_package_map.yaml"))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 # ---------------------------------------------------------------------------

@@ -278,7 +278,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FILE",
         help="Path to _package_map.yaml used to detect already-defined node entities "
-        "(auto-discovered via ament_index when omitted).",
+        "(auto-discovered under build/*/system_designer_resource/ when omitted).",
     )
     gen.add_argument(
         "--verbose",

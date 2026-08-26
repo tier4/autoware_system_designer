@@ -17,33 +17,6 @@ install(
   USE_SOURCE_PERMISSIONS
 )
 
-# Anchor that manifest paths are written relative to; when unset, colcon's default layout
-# (build/ and install/ as workspace-root siblings) supplies it.
-set(SYSTEM_DESIGN_MANIFEST_ANCHOR "" CACHE PATH
-  "Workspace root recorded as the anchor for relative design manifest paths")
-if(NOT SYSTEM_DESIGN_MANIFEST_ANCHOR)
-  get_filename_component(SYSTEM_DESIGN_MANIFEST_ANCHOR "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
-endif()
-
-# Collect system descriptions at install time.
-# ${CMAKE_CURRENT_SOURCE_DIR} and ${Python3_EXECUTABLE} are expanded at configure time;
-install(CODE "
-  set(_dest_prefix \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
-  execute_process(
-    COMMAND \"${CMAKE_COMMAND}\" -E remove_directory
-      \"\${_dest_prefix}/share/${PROJECT_NAME}/resource\"
-  )
-  execute_process(
-    COMMAND \"${Python3_EXECUTABLE}\"
-      \"${CMAKE_CURRENT_SOURCE_DIR}/script/collect_system_design_manifests.py\"
-      \"${CMAKE_CURRENT_SOURCE_DIR}\"
-      \"\${_dest_prefix}/share/${PROJECT_NAME}/resource\"
-      \"\${CMAKE_INSTALL_PREFIX}\"
-      --anchor \"${SYSTEM_DESIGN_MANIFEST_ANCHOR}\"
-    COMMAND_ERROR_IS_FATAL ANY
-  )
-")
-
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(${PROJECT_NAME}_pytest test)

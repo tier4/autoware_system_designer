@@ -65,6 +65,7 @@ macro(autoware_system_designer_build_deploy project_name)
   # autoware_system_designer_DIR = <prefix>/share/autoware_system_designer/cmake
   get_filename_component(_AWSD_SCRIPT_DIR "${autoware_system_designer_DIR}/../script" ABSOLUTE)
   set(BUILD_PY_SCRIPT "${_AWSD_SCRIPT_DIR}/deployment_process.py")
+  set(COLLECT_MANIFESTS_SCRIPT "${_AWSD_SCRIPT_DIR}/collect_system_design_manifests.py")
   set(SYSTEM_DESIGNER_RUNNER_SCRIPT "${_AWSD_SCRIPT_DIR}/system_designer_runner.py")
 
   # Derive the installed Python package dir from the interpreter version.
@@ -89,10 +90,20 @@ macro(autoware_system_designer_build_deploy project_name)
     set(_AWSD_PYTHONPATH_ARGS "PYTHONPATH=${_AWSD_PYTHON_PATH}")
   endif()
 
-  get_filename_component(SYSTEM_DESIGNER_RESOURCE_DIR "${autoware_system_designer_DIR}/../resource" ABSOLUTE)
-
   set(OUTPUT_ROOT_DIR "${CMAKE_INSTALL_PREFIX}/share/${CMAKE_PROJECT_NAME}/")
   get_filename_component(WORKSPACE_ROOT "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
+
+  # Workspace design manifests, collected into this package's build tree on every build so the
+  # deployment sees the current set of design files without rebuilding autoware_system_designer.
+  set(SYSTEM_DESIGNER_RESOURCE_DIR "${CMAKE_BINARY_DIR}/system_designer_resource")
+  # Anchor that manifest paths are written relative to; defaults to the colcon workspace root.
+  set(SYSTEM_DESIGN_MANIFEST_ANCHOR "" CACHE PATH
+    "Workspace root recorded as the anchor for relative design manifest paths")
+  if(SYSTEM_DESIGN_MANIFEST_ANCHOR)
+    set(_MANIFEST_ANCHOR "${SYSTEM_DESIGN_MANIFEST_ANCHOR}")
+  else()
+    set(_MANIFEST_ANCHOR "${WORKSPACE_ROOT}")
+  endif()
   set(LOG_DIR "${WORKSPACE_ROOT}/log/latest_build/${CMAKE_PROJECT_NAME}")
   set(LOG_FILE "${LOG_DIR}/build_${_INPUT_NAME}.log")
   # If OFF (default), deployment failures are reported but do not fail package build.
@@ -123,12 +134,20 @@ macro(autoware_system_designer_build_deploy project_name)
 
   add_custom_target(run_build_py_${_INPUT_NAME} ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LOG_DIR}
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${SYSTEM_DESIGNER_RESOURCE_DIR}
+    COMMAND ${Python3_EXECUTABLE} ${SYSTEM_DESIGNER_RUNNER_SCRIPT} run --log-file ${LOG_FILE} --
+      ${Python3_EXECUTABLE} ${COLLECT_MANIFESTS_SCRIPT}
+        ${CMAKE_SOURCE_DIR}
+        ${SYSTEM_DESIGNER_RESOURCE_DIR}
+        ${CMAKE_INSTALL_PREFIX}
+        --anchor ${_MANIFEST_ANCHOR}
     COMMAND ${CMAKE_COMMAND} -E env
       ${_AWSD_PYTHONPATH_ARGS}
       AUTOWARE_SYSTEM_DESIGNER_BUILD_DEPLOY_STRICT=${AUTOWARE_SYSTEM_DESIGNER_BUILD_DEPLOY_STRICT}
       ${Python3_EXECUTABLE} ${SYSTEM_DESIGNER_RUNNER_SCRIPT}
         deploy
         --log-file ${LOG_FILE}
+        --append
         --print-level ${_PRINT_LEVEL}
         --strict ${_STRICT_MODE_CLI}
         ${BUILD_PY_SCRIPT}

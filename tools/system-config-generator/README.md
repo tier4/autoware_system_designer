@@ -152,7 +152,7 @@ python3 scripts/unify_launch.py \
 | `--component-map FILE` | `config/component_map.yaml` | Namespace → name/entity override YAML                                                               |
 | `--no-modules`         | off                         | Skip per-component module YAML files                                                                |
 | `--no-node-configs`    | off                         | Skip generating `*.node.yaml` for undefined node entities (on by default)                           |
-| `--package-map FILE`   | auto                        | `_package_map.yaml` for entity discovery (auto via ament_index)                                     |
+| `--package-map FILE`   | auto                        | `_package_map.yaml` for entity discovery (auto from `build/*/system_designer_resource/`)            |
 | `--verbose`            | off                         | Print progress and statistics                                                                       |
 
 ---
