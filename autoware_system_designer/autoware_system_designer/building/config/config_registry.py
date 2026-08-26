@@ -15,6 +15,7 @@
 import copy
 import logging
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
 
@@ -82,6 +83,21 @@ def _path_distance(anchor: Path, target: Path) -> int:
     return (len(anchor_parts) - shared) + (len(target_parts) - shared)
 
 
+@lru_cache(maxsize=None)
+def _package_root(path: Path) -> Path:
+    """Nearest ancestor holding a package.xml; the containing directory when none is found."""
+    start = path.parent if path.is_file() else path
+    for candidate in (start, *start.parents):
+        if (candidate / "package.xml").is_file():
+            return candidate
+    return start
+
+
+def _package_distance(anchor: Path, target: Path) -> int:
+    """Tree distance between the packages owning two paths; layout inside a package does not count."""
+    return _path_distance(_package_root(anchor), _package_root(target))
+
+
 @dataclass(frozen=True)
 class SelectionPolicy:
     """Ranking inputs for picking one config among several declaring the same name."""
@@ -90,11 +106,11 @@ class SelectionPolicy:
     preferred_package: Optional[str] = None
 
     def rank(self, config: Config) -> Tuple[int, int]:
-        """Preferred package first, then proximity to the anchor; lower wins."""
+        """Preferred package first, then package proximity to the anchor; lower wins."""
         tier = 0 if self.preferred_package and config.package == self.preferred_package else 1
         if self.anchor_dir is None:
             return tier, _UNRANKED
-        return tier, _path_distance(self.anchor_dir, Path(canonical_path(str(config.file_path))))
+        return tier, _package_distance(self.anchor_dir, Path(canonical_path(str(config.file_path))))
 
 
 @dataclass
