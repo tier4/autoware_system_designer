@@ -21,13 +21,13 @@ and reports errors with YAML locations when available.
 from pathlib import Path
 from typing import Any, Dict
 
-from ..file_io.source_location import SourceLocation, format_source, lookup_source
-from ..parsing.json_schema_loader import load_schema
-from ..parsing.loaders.data_validator import entity_name_decode
-from ..parsing.loaders.yaml_parser import yaml_parser
-from ..parsing.yaml_schema import get_semantic_checks, validate_against_schema
-from ..utils.format_version import check_format_version
-from .report import LintResult
+from autoware_system_designer.common.source_location import SourceLocation, format_source, lookup_source
+from autoware_system_designer.linter.report import LintResult
+from autoware_system_designer.parser.data_validator import entity_name_decode
+from autoware_system_designer.parser.yaml_parser import yaml_parser
+from autoware_system_designer.schema.format_version import check_format_version
+from autoware_system_designer.schema.json_schema_loader import load_schema
+from autoware_system_designer.schema.yaml_schema import get_semantic_checks, validate_against_schema
 
 
 class StructureLinter:

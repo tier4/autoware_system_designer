@@ -22,13 +22,13 @@
 DESIGN_FORMAT_VERSION = "0.4.0"
 
 __all__ = [
-    "config",
-    "builders",
-    "deployment",
-    "parsers",
-    "exceptions",
-    "models",
-    "instance",
-    "utils",
+    "common",
+    "schema",
+    "model",
+    "parser",
+    "builder",
+    "generator",
+    "visualizer",
+    "linter",
     "DESIGN_FORMAT_VERSION",
 ]

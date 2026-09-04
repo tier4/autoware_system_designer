@@ -18,11 +18,20 @@ from pathlib import Path
 
 import yaml
 
-from autoware_system_designer.deploy import Deployment
-from autoware_system_designer.deployment.deployment_config import DeploymentConfig
-from autoware_system_designer.visualization.visualization_index import update_index
+from autoware_system_designer.common.deployment_config import DeploymentConfig
+from autoware_system_designer.common.exceptions import SystemDesignerError, render_error
+from autoware_system_designer.deploy import (
+    build_deployment,
+    export_parameter_set_templates,
+    generate_build_scripts,
+    generate_launchers,
+    generate_system_monitor_config,
+    generate_visualization,
+)
+from autoware_system_designer.visualizer.visualization_index import update_index
 
-_logger = logging.getLogger(__name__)
+# Stable name whether imported or executed as a script.
+_logger = logging.getLogger("autoware_system_designer.deployment_process")
 
 
 # build the deployment
@@ -61,80 +70,68 @@ def build(deployment_file: str, manifest_dir: str, output_root_dir: str, workspa
 
     logger = deploy_config.set_logging()
 
-    deployment = None
+    artifacts = None
     try:
-        # load and build the deployment
+        # build stage: parse, build every mode, export system structure + manifest
         logger.info("Autoware System Designer: Building deployment...")
-        deployment = Deployment(deploy_config)
+        artifacts = build_deployment(deploy_config)
 
-        # parameter set template export
+        # generators: consumers of the build artifacts
         logger.info("Autoware System Designer: Exporting parameter set template...")
-        deployment.generate_parameter_set_template()
+        export_parameter_set_templates(artifacts)
 
-        # generate the system visualization
         logger.info("Autoware System Designer: Generating visualization...")
-        deployment.visualize()
+        generate_visualization(artifacts)
 
-        # generate the launch files
         logger.info("Autoware System Designer: Generating launch files...")
-        deployment.generate_launcher()
+        generate_launchers(artifacts)
 
-        # generate the system monitor configuration
         logger.info("Autoware System Designer: Generating system monitor configuration...")
-        deployment.generate_system_monitor()
+        generate_system_monitor_config(artifacts)
 
-        # generate build scripts
         logger.info("Autoware System Designer: Generating build scripts...")
-        deployment.generate_build_scripts()
+        generate_build_scripts(artifacts)
 
         # update the visualization index
         logger.info("Autoware System Designer: Updating visualization index...")
         update_index(output_root_dir)
 
         logger.info("Autoware System Designer: Done!")
-    except Exception as exc:
-        # Construction failures carry the registry on the exception; hints
-        # surface duplicate and minor-version context alongside the error.
-        _emit_minor_version_hint(deployment, exc)
-        _emit_duplicate_hint(deployment, exc)
+    except SystemDesignerError as exc:
+        # The process boundary reports once: hints attach to the error and the
+        # whole block (message, context frames, hints) renders in one log entry.
+        _attach_registry_hints(artifacts, exc)
+        _logger.error(render_error(exc))
         raise
 
 
-def _find_registry(deployment, exc):
-    """Registry attached to the exception, or the deployment's when construction completed."""
+def _find_registry(artifacts, exc):
+    """Registry attached to the exception, or the build artifacts' when the build completed."""
     registry = getattr(exc, "config_registry", None)
     if registry is not None:
         return registry
-    return getattr(deployment, "config_registry", None) if deployment else None
+    return getattr(artifacts, "config_registry", None) if artifacts else None
 
 
-def _emit_duplicate_hint(deployment, exc):
-    """Log the duplicated names the deployment reached, if any."""
-    registry = _find_registry(deployment, exc)
+def _attach_registry_hints(artifacts, exc: SystemDesignerError) -> None:
+    """Attach duplicate-name and minor-version hints recorded by the registry."""
+    registry = _find_registry(artifacts, exc)
     if registry is None:
         return
-    duplicates = registry.used_duplicates()
-    if not duplicates:
-        return
-    from autoware_system_designer.building.config.config_registry import format_duplicate_report
-
-    _logger.error(
-        f"Note: {len(duplicates)} duplicated entity name(s) are used by this deployment. "
-        f"This may have contributed to the error:\n" + format_duplicate_report(duplicates)
+    from autoware_system_designer.builder.config.config_registry import (
+        format_duplicate_report,
+        format_mismatch_hint,
     )
 
-
-def _emit_minor_version_hint(deployment, exc):
-    """Log minor-version mismatch files if any were recorded."""
-    registry = _find_registry(deployment, exc)
-    if registry is None:
-        return
+    duplicates = registry.used_duplicates()
+    if duplicates:
+        exc.add_hint(
+            f"Note: {len(duplicates)} duplicated entity name(s) are used by this deployment. "
+            f"This may have contributed to the error:\n" + format_duplicate_report(duplicates)
+        )
     files = getattr(registry, "minor_version_mismatch_files", [])
-    if not files:
-        return
-    from autoware_system_designer.building.config.config_registry import _format_mismatch_hint
-
-    _logger.error(_format_mismatch_hint(files))
+    if files:
+        exc.add_hint(format_mismatch_hint(files))
 
 
 if __name__ == "__main__":
@@ -148,4 +145,8 @@ if __name__ == "__main__":
     output_root_dir = sys.argv[3]
     workspace_yaml = sys.argv[4] if len(sys.argv) > 4 else None
 
-    build(deployment_file, manifest_dir, output_root_dir, workspace_yaml)
+    try:
+        build(deployment_file, manifest_dir, output_root_dir, workspace_yaml)
+    except SystemDesignerError:
+        # Already rendered by the boundary handler; a traceback would repeat it.
+        raise SystemExit(1)

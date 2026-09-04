@@ -6,8 +6,8 @@ from typing import Dict, Optional
 
 from utils.uri_utils import uri_to_path
 
-from autoware_system_designer.parsing.config import Config
-from autoware_system_designer.parsing.loaders.data_parser import ConfigParser
+from autoware_system_designer.model.config import Config
+from autoware_system_designer.parser.data_parser import ConfigParser
 
 logger = logging.getLogger(__name__)
 
